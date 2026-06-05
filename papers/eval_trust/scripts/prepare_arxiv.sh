@@ -99,6 +99,12 @@ if [ "$COMPILE" = "true" ]; then
         exit 1
     fi
     popd >/dev/null
+
+    # Refresh the public-facing draft.pdf from the just-compiled PDF.
+    # This keeps the repo's draft.pdf in lockstep with draft.md any time
+    # this script runs.
+    cp "$BUILD_DIR/main.pdf" "$PAPER_DIR/draft.pdf"
+    echo "  refreshed $PAPER_DIR/draft.pdf"
 fi
 
 echo "[5b/5] tarring..."
