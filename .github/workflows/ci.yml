@@ -35,6 +35,12 @@ jobs:
           python run_audit.py
           # exits 0 on success; CI fails if reproducer crashes
 
+      - name: Regenerate paper figures from data/
+        run: |
+          pip install matplotlib
+          python papers/eval_trust/scripts/make_figures.py
+          # ensures figures are reproducible from data/ alone
+
       - name: Lint
         run: |
-          ruff check eval_trust/ tests/ run_audit.py
+          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/

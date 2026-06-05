@@ -271,3 +271,33 @@ the broken protocol. The protocol was the bug, not the n.
   on a paper draft you're about to submit.
 - `numbers_cross_check.json` has every number cited in the paper with
   a source-file pointer, in case you want to recompute anything.
+
+---
+
+## Recipe 10: convert lm-eval-harness output for paired audit
+
+Run [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
+for the standard metric, then audit on top:
+
+```bash
+# Step 1 — run lm-eval-harness yourself (separate install)
+lm_eval --model hf --model_args pretrained=Qwen/Qwen2.5-1.5B-Instruct \
+        --tasks gsm8k --output_path lm_out/instruct.json --log_samples
+lm_eval --model hf --model_args pretrained=path/to/your-merge \
+        --tasks gsm8k --output_path lm_out/merge.json --log_samples
+```
+
+```python
+# Step 2 — paired audit on top of lm-eval output
+from eval_trust.lm_eval_bridge import pair
+from eval_trust.paired_stats import mcnemar_exact
+
+out = pair("lm_out/merge_samples.jsonl", "lm_out/instruct_samples.jsonl")
+p = mcnemar_exact(out["b"], out["c"])
+print(f"n={out['n_common']}  delta={out['delta_pp']:+.1f}pp  p={p:.4f}")
+```
+
+`pair()` lines up both runs by `doc_id` and emits the (b, c) discordant
+counts. Pass them to `mcnemar_exact` and you have the standard
+exchange of "is this delta real?" — same workflow as Recipe 1, but
+sourced from lm-eval-harness rather than custom logs.

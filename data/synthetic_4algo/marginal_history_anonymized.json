@@ -1,0 +1,186 @@
+{
+  "baseline_acc_pp": 56.666666666666664,
+  "history_anonymized": [
+    {
+      "step": 0,
+      "saliency_rank": 0,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 1,
+      "saliency_rank": 1,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 2,
+      "saliency_rank": 2,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 3,
+      "saliency_rank": 3,
+      "delta_pp_vs_base": 0.0,
+      "verdict": "~ NEUTRAL (\u8df3\u8fc7)"
+    },
+    {
+      "step": 4,
+      "saliency_rank": 4,
+      "delta_pp_vs_base": 13.333333333333334,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 5,
+      "saliency_rank": 5,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 6,
+      "saliency_rank": 6,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 7,
+      "saliency_rank": 7,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 8,
+      "saliency_rank": 8,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 9,
+      "saliency_rank": 9,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 10,
+      "saliency_rank": 10,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 11,
+      "saliency_rank": 11,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 12,
+      "saliency_rank": 12,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 13,
+      "saliency_rank": 13,
+      "delta_pp_vs_base": -3.3333333333333335,
+      "verdict": "\u2717 REJECT"
+    },
+    {
+      "step": 14,
+      "saliency_rank": 14,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 15,
+      "saliency_rank": 15,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 16,
+      "saliency_rank": 16,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 17,
+      "saliency_rank": 17,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 18,
+      "saliency_rank": 18,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 19,
+      "saliency_rank": 19,
+      "delta_pp_vs_base": 0.0,
+      "verdict": "~ NEUTRAL (\u8df3\u8fc7)"
+    },
+    {
+      "step": 20,
+      "saliency_rank": 20,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 21,
+      "saliency_rank": 21,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 22,
+      "saliency_rank": 22,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 23,
+      "saliency_rank": 23,
+      "delta_pp_vs_base": 0.0,
+      "verdict": "~ NEUTRAL (\u8df3\u8fc7)"
+    },
+    {
+      "step": 24,
+      "saliency_rank": 24,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 25,
+      "saliency_rank": 25,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 26,
+      "saliency_rank": 26,
+      "delta_pp_vs_base": 10.0,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 27,
+      "saliency_rank": 27,
+      "delta_pp_vs_base": 6.666666666666667,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 28,
+      "saliency_rank": 28,
+      "delta_pp_vs_base": 3.3333333333333335,
+      "verdict": "\u2713 KEEP"
+    },
+    {
+      "step": 29,
+      "saliency_rank": 29,
+      "delta_pp_vs_base": 0.0,
+      "verdict": "~ NEUTRAL (\u8df3\u8fc7)"
+    }
+  ],
+  "note": "Step labels and delta_pp values are preserved; specific weight keys (e.g. layer indices) are omitted as they constitute project-specific IP. Only the rank-vs-marginal-effect shape is needed to visualise the cancer-key effect."
+}
