@@ -76,9 +76,12 @@ That's the entire case study, on real data, in one screenful.
 
 ## What's in the toolkit
 
-📖 **[EXAMPLES.md](EXAMPLES.md)** — 9 copy-pasteable recipes for common
+📖 **[EXAMPLES.md](EXAMPLES.md)** — 10 copy-pasteable recipes for common
 audit tasks (paired McNemar, Wilson CI, paired bootstrap, lottery rate,
-T0v2 channels, conformal CI, sample-size planning).
+T0v2 channels, conformal CI, sample-size planning, lm-eval-harness bridge).
+
+🐍 **[`examples/`](examples/)** — the same 10 recipes as standalone
+runnable Python files: `python examples/recipe1_paired_mcnemar.py`.
 
 ```
 eval_trust/

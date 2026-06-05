@@ -49,4 +49,4 @@ jobs:
 
       - name: Lint
         run: |
-          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/
+          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/ examples/
