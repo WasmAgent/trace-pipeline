@@ -136,6 +136,15 @@ pip install scipy pytest
 PYTHONPATH=. pytest tests/ -q
 ```
 
+Or via the project Makefile (`make help` shows all 14 targets):
+
+```bash
+make install    # pip install -e ".[dev]"
+make pytest     # 41 unit tests
+make ci         # everything CI runs (test + lint + reproducer + self-test + examples)
+make paper      # rebuild draft.pdf + arxiv_upload.tar.gz (needs pandoc + tectonic)
+```
+
 ---
 
 ## Citation
