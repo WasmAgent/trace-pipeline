@@ -1,0 +1,68 @@
+{
+  "computed_2026_06_05": "draft cross-check",
+  "max_new_300_paired": {
+    "n": 200,
+    "winner_correct": 119,
+    "instruct_correct": 99,
+    "winner_acc": 0.595,
+    "instruct_acc": 0.495,
+    "delta_pp": 10.0,
+    "b_instruct_only": 21,
+    "c_winner_only": 41,
+    "n_discordant": 62,
+    "mcnemar_exact_2sided_p": 0.0151
+  },
+  "max_new_768_paired": {
+    "n": 199,
+    "n_excluded": 1,
+    "excluded_id": "gsm8k-131",
+    "excluded_reason": "OverflowError: cannot convert float infinity to integer",
+    "winner_correct": 135,
+    "instruct_correct": 137,
+    "winner_acc": 0.6784,
+    "instruct_acc": 0.6884,
+    "delta_pp": -1.01,
+    "b_instruct_only": 29,
+    "c_winner_only": 27,
+    "both": 108,
+    "neither": 35,
+    "n_discordant": 56,
+    "mcnemar_exact_2sided_p": 0.8939,
+    "paired_bootstrap_delta_95ci_pp": [-8.54, 6.03],
+    "bootstrap_seed": 42,
+    "bootstrap_n": 10000
+  },
+  "lottery_rate": {
+    "n_tested": 65,
+    "lottery_count": 25,
+    "rate": 0.3846,
+    "sc_k": 5,
+    "sc_temperature": 0.5,
+    "sc_top_p": 0.95,
+    "source": "phase14_t0v2_d/self_consistency_full.json"
+  },
+  "quantization_granularity": {
+    "per_tensor_int4_winner_n100": 0.00,
+    "per_tensor_int4_instruct_n100": 0.00,
+    "per_tensor_int8_winner_n100": 0.52,
+    "per_tensor_fp16_winner_n100": 0.62,
+    "group32_int4_p05_winner_n100": 0.59,
+    "group32_int4_p15_winner_n100": 0.63,
+    "group32_int4_p50_winner_n100": 0.62,
+    "group32_int8_p05_winner_n100": 0.67,
+    "group32_int8_p15_winner_n100": 0.71,
+    "group_size": 32,
+    "max_swing_pp": 63.0,
+    "source_per_tensor": "phase14_t7_pareto/",
+    "source_group32": "phase14_t7_v4_group/"
+  },
+  "data_sources": {
+    "phase13_winner_summary": "phase13_3_coder_chat/summary.json",
+    "phase13_winner_results": "phase13_3_coder_chat/coder_chat0.7_generate.json",
+    "max_new_768_winner": "phase14_t0v2_a_recovery/winner_max_new768.json",
+    "max_new_768_instruct": "phase14_t0v2_a_recovery/instruct_max_new768.json",
+    "max_new_768_summary": "phase14_t0v2_a_recovery/winner_max_new768_summary.json",
+    "self_consistency": "phase14_t0v2_d/self_consistency_full.json",
+    "t0v2_aggregate": "phase14_t0v2_agg/aggregate.json"
+  }
+}
