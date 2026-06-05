@@ -47,6 +47,51 @@ jobs:
           python papers/eval_trust/scripts/make_figures.py
           # ensures figures are reproducible from data/ alone
 
+      - name: Run all 10 examples
+        run: |
+          for f in examples/recipe*.py; do
+            echo "--- $f ---"
+            python "$f" || exit 1
+          done
+
       - name: Lint
         run: |
           ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/ examples/
+
+  paper:
+    name: paper builds (pandoc + tectonic)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install matplotlib (needed for figure regen)
+        run: pip install matplotlib
+
+      - name: Regenerate figures (paper depends on them)
+        run: python papers/eval_trust/scripts/make_figures.py
+
+      - name: Install pandoc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qqy pandoc
+
+      - name: Install tectonic
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL \
+              https://drop-sh.fullyjustified.net | sh
+          sudo mv tectonic /usr/local/bin/
+
+      - name: Build arxiv tar + sanity-compile PDF
+        run: bash papers/eval_trust/scripts/prepare_arxiv.sh
+
+      - name: Verify outputs exist
+        run: |
+          test -f papers/eval_trust/draft.pdf
+          test -f papers/eval_trust/arxiv_upload.tar.gz
+          ls -lah papers/eval_trust/draft.pdf papers/eval_trust/arxiv_upload.tar.gz
