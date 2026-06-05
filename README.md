@@ -76,34 +76,16 @@ That's the entire case study, on real data, in one screenful.
 
 ## What's in the toolkit
 
-📖 **[EXAMPLES.md](EXAMPLES.md)** — 10 copy-pasteable recipes for common
-audit tasks (paired McNemar, Wilson CI, paired bootstrap, lottery rate,
-T0v2 channels, conformal CI, sample-size planning, lm-eval-harness bridge).
-
-🐍 **[`examples/`](examples/)** — the same 10 recipes as standalone
-runnable Python files: `python examples/recipe1_paired_mcnemar.py`.
+📖 **[EXAMPLES.md](EXAMPLES.md)** — 10 copy-pasteable recipes.
+🐍 **[`examples/`](examples/)** — same 10 as standalone runnable .py.
+🛠️ **[`Makefile`](Makefile)** — 14 dev shortcuts (`make help`).
+🧪 **[`benchmarks/`](benchmarks/)** — synthetic ground-truth self-test.
+📄 **[`papers/eval_trust/`](papers/eval_trust/)** — paper PDF + LaTeX + figures + scripts.
 
 ```
-eval_trust/
-├── paired_stats.py       # McNemar exact, Wilson CI, paired bootstrap
-├── conformal_ci.py       # split-conformal accuracy intervals (small n)
-└── t0v2/
-    ├── truncation_extract.py  # detect generations cut off by max_new_tokens
-    └── aggregate.py            # multi-channel triage of "wrong" answers
-
-data/                     # raw audit logs cited in the paper
-├── winner_max_new768.json
-├── instruct_max_new768.json
-├── self_consistency_full.json    # SC-5 lottery rates
-├── t0v2_aggregate.json
-└── gsm8k_dev_200.json            # the 200-item dev split
-
-papers/eval_trust/
-├── draft.pdf             # ★ the paper
-├── draft.md              # markdown source
-├── refs.bib
-├── figures/              # paired McNemar contingency, T0v2 channels, granularity Pareto
-└── numbers_cross_check.json    # every number in the paper has a source file
+eval_trust/  paired_stats / conformal_ci / lm_eval_bridge / t0v2/
+data/        case-study logs + synthetic + quantization summary
+tests/       41 unit tests (paired_stats / conformal_ci / lm_eval_bridge)
 ```
 
 Pure Python + NumPy + (optional) SciPy. **No GPU dependency. No model
