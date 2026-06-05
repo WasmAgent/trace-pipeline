@@ -30,6 +30,12 @@ jobs:
       - name: Run pytest
         run: PYTHONPATH=. pytest tests/ -q
 
+      - name: Run self-test benchmark (synthetic ground truth)
+        run: |
+          python benchmarks/self_test.py
+          # checks toolkit verdict matches analytical truth on
+          # NO_SIGNAL and REAL_SIGNAL synthetic scenarios
+
       - name: Run reproducer (the case study)
         run: |
           python run_audit.py
@@ -43,4 +49,4 @@ jobs:
 
       - name: Lint
         run: |
-          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/
+          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/
