@@ -61,38 +61,89 @@ evidence that the resulting training signal is effective.
 
 ## 2. Related Work
 
-### 2.1 Agent execution trace training
+### 2.1 Task specification in agent frameworks
 
-**Agent Lightning** (arXiv:2508.03680) decouples agent execution from RL
-training by modelling agent runs as MDPs. Our approach differs in two ways:
-we use a *deterministic* verifier (IFEval rule checks) rather than a learned
-reward model, eliminating reward hacking; and we focus on compliance trace
-structure rather than general reward maximization.
+Existing agent frameworks specify tasks through natural-language prompts
+and Python configuration parameters, not typed constraint schemas.
+**AutoGen** (Wu et al., arXiv:2308.08155, 2023) uses "conversation programming"
+where tasks are strings and agent state is a flat message list — no formal
+constraint IR, no violation record, no repair trace [verified, 3-0].
+**LangGraph** uses Python type annotations on StateGraph dicts, which are not
+a JSON Schema and carry no constraint-level metadata such as level, category,
+or repair policy.
 
-**AgentJet** (arXiv:2606.04484) provides distributed agentic RL training
-infrastructure. We share the philosophy of decoupling execution from training
-but target the narrower problem of instruction-following compliance.
+**IFEval** (Zhou et al., arXiv:2311.07911, 2023) is the closest prior art for
+typed constraint specification: it defines 25 instruction types as opaque
+string IDs (e.g. `punctuation:no_comma`) with untyped `kwargs` dicts. However
+its output schema records only boolean pass/fail per instruction —
+`follow_all_instructions: bool`, `follow_instruction_list: list[bool]` — with
+no violation type, evidence span, location pointer, or repair history
+[verified, 3-0]. IFEval is canonical (cited in Llama 3, DeepSeek-R1,
+lm-evaluation-harness) but not designed as a training-data record.
 
-### 2.2 Tool-use and function-calling models
+**FollowBench** (Jiang et al., arXiv:2310.20410, 2023) adds a 5-category
+constraint taxonomy (Content/Situation/Format/Example/Mixed) with 5 difficulty
+levels, and per-constraint boolean scores (HSR/SSR). However outputs are
+plain Python booleans aggregated as CSV with no JSON Schema, no location
+pointer, and no repair trace [verified, 3-0].
 
-Toolformer, Gorilla, ToolLLM, and APIGen train models on function-calling
-data where success is measured by single-call correctness. Our setting extends
-this to the full agent run: constraint satisfaction across multiple turns,
-with violation-specific repair as an explicit training objective.
+### 2.2 Verification output schemas
 
-### 2.3 Structured output and guardrails
+Existing verification frameworks produce unstructured outputs.
+**MINT** (Wang et al., arXiv:2309.10691, ICLR 2024) stores agent state as
+`List[Dict]` of conversation turns with binary `success` flags and GPT-4
+natural-language feedback strings (`"Your answer is wrong."`) — not a typed
+error structure [verified, 3-0].
 
-Outlines, XGrammar, and Guardrails AI constrain *individual outputs* at
-decode time. Our contribution is orthogonal: we train the model to satisfy
-the *complete TaskSpec* proactively, reducing the need for constrained
-decoding to a fallback rather than the primary mechanism.
+**ETO** (Song et al., arXiv:2403.02502, ACL 2024) constructs preference data
+as contrastive trajectory pairs `D_p = {(u, e_w, e_l)}` determined solely by
+final scalar rewards. Agent trajectories are flat tuples
+`e = (u, a_1, o_1, ..., a_n)` with no structured record of *why* a trajectory
+failed — no violation type, no evidence span, no constraint reference [verified,
+3-0].
 
-### 2.4 Preference learning
+### 2.3 Structured repair traces
 
-Standard DPO (Rafailov et al., 2023) requires human-annotated or LLM-judged
-preference pairs. Our construction derives preferences from deterministic
-verifier outcomes and compliance engine mode comparisons, removing the
-annotation cost and eliminating LLM-judge noise.
+**Self-Refine** (Madaan et al., 2023) and **Reflexion** (Shinn et al.,
+NeurIPS 2023) introduced iterative self-correction but represent feedback as
+natural-language strings in conversational memory — no machine-readable typed
+schema.
+
+The closest existing work is **"Failure Makes the Agent Stronger"**
+(Su et al., arXiv:2509.18847, ACL submission, 2025–2026), which proposes
+"structured reflection" as an explicit Reflect-Call-Final stepwise trajectory
+format and introduces Tool-Reflection-Bench with four programmatic evaluation
+dimensions [verified, 3-0, medium confidence]. This work demonstrates that
+making repair explicit and trainable improves multi-turn tool-call performance.
+However, it still lacks a typed JSON Schema for violation records, constraint
+IR, or a unified compliance eval record suitable for both RLAIF preference
+construction and compliance auditing — the gap WasmAgent addresses.
+
+### 2.4 Preference learning from agent runs
+
+DPO (Rafailov et al., 2023), ORPO, and KTO provide post-training infrastructure.
+ETO (arXiv:2403.02502) shows that contrastive trajectory pairs from agent
+exploration improve downstream task performance. Our contribution is orthogonal:
+we do not introduce a new preference learning algorithm, but a new method
+for *constructing* preference pairs using deterministic verifier verdicts and
+execution mode comparisons, removing LLM-judge annotation costs and
+eliminating reward model noise.
+
+### 2.5 Gap summary
+
+No verified source provides a unified, versioned, machine-readable JSON Schema
+that jointly satisfies all three properties required for compliance-conditioned
+training:
+
+| Property | Required for | Coverage in prior work |
+|---|---|---|
+| **Verifiability** — typed constraint IR | Deterministic checking without LLM judge | Partial (IFEval string IDs, no repair policy) |
+| **Locatability** — violation + evidence span | Local repair (patch/insert vs. full rewrite) | **None** |
+| **Trainability** — typed repair trace | SFT + DPO preference construction | Partial (ETO trajectories, no violation rationale) |
+
+WasmAgent's schema (`TaskSpec` + `ConstraintIR` + `ConstraintViolation` +
+`RepairTraceEntry` + `ComplianceEvalRecord`) is, to our knowledge, the first
+to satisfy all three simultaneously.
 
 ---
 
