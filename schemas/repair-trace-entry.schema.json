@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "RepairStrategy": {
+      "enum": [
+        "patch",
+        "insert_section",
+        "regenerate_region",
+        "full"
+      ],
+      "title": "RepairStrategy",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "round": {
+      "title": "Round",
+      "type": "integer"
+    },
+    "violation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Violation Ids",
+      "type": "array"
+    },
+    "strategy": {
+      "$ref": "#/$defs/RepairStrategy"
+    },
+    "target_region": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Region"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "rolled_back": {
+      "default": false,
+      "title": "Rolled Back",
+      "type": "boolean"
+    },
+    "remaining_violation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Remaining Violation Ids",
+      "type": "array"
+    },
+    "token_cost": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Token Cost"
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Ms"
+    }
+  },
+  "required": [
+    "round",
+    "violation_ids",
+    "strategy",
+    "ok"
+  ],
+  "title": "RepairTraceEntry",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/repair-trace-entry.schema.json",
+  "description": "One round of repair: which violations were targeted and whether they resolved."
+}

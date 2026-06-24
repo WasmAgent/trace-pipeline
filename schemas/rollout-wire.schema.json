@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "BuildResult": {
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "skip"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "stderr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stderr"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "BuildResult",
+      "type": "object"
+    },
+    "ToolCallEntry": {
+      "properties": {
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "result": {
+          "default": null,
+          "title": "Result"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "tool_name"
+      ],
+      "title": "ToolCallEntry",
+      "type": "object"
+    }
+  },
+  "description": "One branch produced by wasmagent-js RolloutForkRunner. Schema version: rollout-wire/v1.",
+  "properties": {
+    "schema_version": {
+      "const": "rollout-wire/v1",
+      "default": "rollout-wire/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "rollout_id": {
+      "title": "Rollout Id",
+      "type": "string"
+    },
+    "task": {
+      "title": "Task",
+      "type": "string"
+    },
+    "branch_index": {
+      "title": "Branch Index",
+      "type": "integer"
+    },
+    "temperature": {
+      "title": "Temperature",
+      "type": "number"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "tool_call_sequence": {
+      "items": {
+        "$ref": "#/$defs/ToolCallEntry"
+      },
+      "title": "Tool Call Sequence",
+      "type": "array"
+    },
+    "final_answer": {
+      "title": "Final Answer",
+      "type": "string"
+    },
+    "build_result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BuildResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "objective_score": {
+      "default": 0,
+      "enum": [
+        0,
+        1
+      ],
+      "title": "Objective Score",
+      "type": "integer"
+    },
+    "objective_status": {
+      "default": "unknown",
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ],
+      "title": "Objective Status",
+      "type": "string"
+    },
+    "rank": {
+      "default": 0,
+      "title": "Rank",
+      "type": "integer"
+    },
+    "total_score": {
+      "default": 0.0,
+      "title": "Total Score",
+      "type": "number"
+    }
+  },
+  "required": [
+    "rollout_id",
+    "task",
+    "branch_index",
+    "temperature",
+    "session_id",
+    "final_answer"
+  ],
+  "title": "RolloutBranchRecord",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/rollout-wire.schema.json"
+}

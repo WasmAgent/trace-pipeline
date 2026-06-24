@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "ConstraintCategory": {
+      "enum": [
+        "format",
+        "content",
+        "style",
+        "tool",
+        "state",
+        "security",
+        "semantic"
+      ],
+      "title": "ConstraintCategory",
+      "type": "string"
+    },
+    "ConstraintLevel": {
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "title": "ConstraintLevel",
+      "type": "string"
+    },
+    "RepairPolicy": {
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/RepairStrategy"
+        },
+        "target_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Region"
+        },
+        "max_rounds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rounds"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "title": "RepairPolicy",
+      "type": "object"
+    },
+    "RepairStrategy": {
+      "enum": [
+        "patch",
+        "insert_section",
+        "regenerate_region",
+        "full"
+      ],
+      "title": "RepairStrategy",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "verify_method": {
+      "title": "Verify Method",
+      "type": "string"
+    },
+    "arg": {
+      "default": null,
+      "title": "Arg"
+    },
+    "path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Path"
+    },
+    "level": {
+      "$ref": "#/$defs/ConstraintLevel"
+    },
+    "priority": {
+      "default": 50,
+      "title": "Priority",
+      "type": "integer"
+    },
+    "category": {
+      "$ref": "#/$defs/ConstraintCategory"
+    },
+    "repair": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RepairPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "description",
+    "verify_method",
+    "level",
+    "category"
+  ],
+  "title": "ConstraintIR",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/constraint-ir.schema.json",
+  "description": "A single constraint with level, category, and optional repair policy."
+}

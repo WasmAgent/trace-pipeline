@@ -1,0 +1,260 @@
+{
+  "$defs": {
+    "ConstraintCategory": {
+      "enum": [
+        "format",
+        "content",
+        "style",
+        "tool",
+        "state",
+        "security",
+        "semantic"
+      ],
+      "title": "ConstraintCategory",
+      "type": "string"
+    },
+    "ConstraintIR": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "verify_method": {
+          "title": "Verify Method",
+          "type": "string"
+        },
+        "arg": {
+          "default": null,
+          "title": "Arg"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "level": {
+          "$ref": "#/$defs/ConstraintLevel"
+        },
+        "priority": {
+          "default": 50,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "category": {
+          "$ref": "#/$defs/ConstraintCategory"
+        },
+        "repair": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepairPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "verify_method",
+        "level",
+        "category"
+      ],
+      "title": "ConstraintIR",
+      "type": "object"
+    },
+    "ConstraintLevel": {
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "title": "ConstraintLevel",
+      "type": "string"
+    },
+    "RepairPolicy": {
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/RepairStrategy"
+        },
+        "target_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Region"
+        },
+        "max_rounds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rounds"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "title": "RepairPolicy",
+      "type": "object"
+    },
+    "RepairStrategy": {
+      "enum": [
+        "patch",
+        "insert_section",
+        "regenerate_region",
+        "full"
+      ],
+      "title": "RepairStrategy",
+      "type": "string"
+    },
+    "TaskSpecRepairConfig": {
+      "properties": {
+        "max_rounds": {
+          "default": 3,
+          "title": "Max Rounds",
+          "type": "integer"
+        },
+        "default_strategy": {
+          "$ref": "#/$defs/RepairStrategy",
+          "default": "patch"
+        }
+      },
+      "title": "TaskSpecRepairConfig",
+      "type": "object"
+    },
+    "TaskSpecTraceConfig": {
+      "properties": {
+        "record_constraint_eval": {
+          "default": true,
+          "title": "Record Constraint Eval",
+          "type": "boolean"
+        },
+        "record_tool_calls": {
+          "default": true,
+          "title": "Record Tool Calls",
+          "type": "boolean"
+        },
+        "record_repairs": {
+          "default": true,
+          "title": "Record Repairs",
+          "type": "boolean"
+        }
+      },
+      "title": "TaskSpecTraceConfig",
+      "type": "object"
+    },
+    "ToolPolicy": {
+      "properties": {
+        "allowed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed",
+          "type": "array"
+        },
+        "denied": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Denied",
+          "type": "array"
+        }
+      },
+      "required": [
+        "allowed"
+      ],
+      "title": "ToolPolicy",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "language": {
+      "default": "en",
+      "title": "Language",
+      "type": "string"
+    },
+    "audience": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audience"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/ConstraintIR"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "priority_hierarchy": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Priority Hierarchy",
+      "type": "array"
+    },
+    "tools": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "repair": {
+      "$ref": "#/$defs/TaskSpecRepairConfig"
+    },
+    "trace": {
+      "$ref": "#/$defs/TaskSpecTraceConfig"
+    }
+  },
+  "required": [
+    "id",
+    "intent"
+  ],
+  "title": "TaskSpec",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/task-spec.schema.json",
+  "description": "Root contract for a WasmAgent compliance run, including constraints, tool policy, and repair configuration."
+}

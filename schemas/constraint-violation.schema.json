@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "ConstraintCategory": {
+      "enum": [
+        "format",
+        "content",
+        "style",
+        "tool",
+        "state",
+        "security",
+        "semantic"
+      ],
+      "title": "ConstraintCategory",
+      "type": "string"
+    },
+    "ConstraintLevel": {
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "title": "ConstraintLevel",
+      "type": "string"
+    },
+    "EvidenceSpan": {
+      "properties": {
+        "region_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region Id"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Pointer"
+        },
+        "char_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char Range"
+        },
+        "line_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Range"
+        }
+      },
+      "title": "EvidenceSpan",
+      "type": "object"
+    },
+    "ViolationStage": {
+      "enum": [
+        "pre_decode",
+        "post_decode",
+        "post_tool_call"
+      ],
+      "title": "ViolationStage",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "constraint_id": {
+      "title": "Constraint Id",
+      "type": "string"
+    },
+    "level": {
+      "$ref": "#/$defs/ConstraintLevel"
+    },
+    "category": {
+      "$ref": "#/$defs/ConstraintCategory"
+    },
+    "hint": {
+      "title": "Hint",
+      "type": "string"
+    },
+    "evidence_span": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceSpan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "detected_at": {
+      "$ref": "#/$defs/ViolationStage"
+    }
+  },
+  "required": [
+    "constraint_id",
+    "level",
+    "category",
+    "hint",
+    "detected_at"
+  ],
+  "title": "ConstraintViolation",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/constraint-violation.schema.json",
+  "description": "A detected constraint violation with location and stage information."
+}

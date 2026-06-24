@@ -1,0 +1,403 @@
+{
+  "$defs": {
+    "ComplianceError": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "model_error",
+            "verifier_error",
+            "repair_error",
+            "workspace_error",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "generate",
+            "verify",
+            "repair",
+            "write"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message",
+        "stage"
+      ],
+      "title": "ComplianceError",
+      "type": "object"
+    },
+    "ConstraintCategory": {
+      "enum": [
+        "format",
+        "content",
+        "style",
+        "tool",
+        "state",
+        "security",
+        "semantic"
+      ],
+      "title": "ConstraintCategory",
+      "type": "string"
+    },
+    "ConstraintLevel": {
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "title": "ConstraintLevel",
+      "type": "string"
+    },
+    "ConstraintViolation": {
+      "properties": {
+        "constraint_id": {
+          "title": "Constraint Id",
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/ConstraintLevel"
+        },
+        "category": {
+          "$ref": "#/$defs/ConstraintCategory"
+        },
+        "hint": {
+          "title": "Hint",
+          "type": "string"
+        },
+        "evidence_span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceSpan"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "detected_at": {
+          "$ref": "#/$defs/ViolationStage"
+        }
+      },
+      "required": [
+        "constraint_id",
+        "level",
+        "category",
+        "hint",
+        "detected_at"
+      ],
+      "title": "ConstraintViolation",
+      "type": "object"
+    },
+    "EvidenceSpan": {
+      "properties": {
+        "region_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region Id"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Pointer"
+        },
+        "char_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char Range"
+        },
+        "line_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Range"
+        }
+      },
+      "title": "EvidenceSpan",
+      "type": "object"
+    },
+    "RepairStrategy": {
+      "enum": [
+        "patch",
+        "insert_section",
+        "regenerate_region",
+        "full"
+      ],
+      "title": "RepairStrategy",
+      "type": "string"
+    },
+    "RepairTraceEntry": {
+      "properties": {
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "violation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Violation Ids",
+          "type": "array"
+        },
+        "strategy": {
+          "$ref": "#/$defs/RepairStrategy"
+        },
+        "target_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Region"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "rolled_back": {
+          "default": false,
+          "title": "Rolled Back",
+          "type": "boolean"
+        },
+        "remaining_violation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Remaining Violation Ids",
+          "type": "array"
+        },
+        "token_cost": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Token Cost"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        }
+      },
+      "required": [
+        "round",
+        "violation_ids",
+        "strategy",
+        "ok"
+      ],
+      "title": "RepairTraceEntry",
+      "type": "object"
+    },
+    "RunMode": {
+      "enum": [
+        "direct",
+        "prompt_retry",
+        "full_pcl"
+      ],
+      "title": "RunMode",
+      "type": "string"
+    },
+    "TokenCost": {
+      "properties": {
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation"
+        },
+        "repair": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repair"
+        }
+      },
+      "title": "TokenCost",
+      "type": "object"
+    },
+    "ViolationStage": {
+      "enum": [
+        "pre_decode",
+        "post_decode",
+        "post_tool_call"
+      ],
+      "title": "ViolationStage",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "task_spec_hash": {
+      "title": "Task Spec Hash",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/RunMode"
+    },
+    "violations": {
+      "items": {
+        "$ref": "#/$defs/ConstraintViolation"
+      },
+      "title": "Violations",
+      "type": "array"
+    },
+    "repair_trace": {
+      "items": {
+        "$ref": "#/$defs/RepairTraceEntry"
+      },
+      "title": "Repair Trace",
+      "type": "array"
+    },
+    "repair_rounds": {
+      "default": 0,
+      "title": "Repair Rounds",
+      "type": "integer"
+    },
+    "final_pass": {
+      "title": "Final Pass",
+      "type": "boolean"
+    },
+    "token_cost": {
+      "$ref": "#/$defs/TokenCost"
+    },
+    "latency_ms": {
+      "default": 0.0,
+      "title": "Latency Ms",
+      "type": "number"
+    },
+    "artifact": {
+      "title": "Artifact",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ComplianceError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "task_id",
+    "task_spec_hash",
+    "model",
+    "mode",
+    "final_pass",
+    "artifact"
+  ],
+  "title": "ComplianceEvalRecord",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/compliance-eval-record.schema.json",
+  "description": "Final output of one WasmAgent compliance engine run."
+}

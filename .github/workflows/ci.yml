@@ -54,9 +54,9 @@ jobs:
             python "$f" || exit 1
           done
 
-      - name: Run evomerge pipeline examples (recipe11–15)
+      - name: Run evomerge pipeline examples (recipe11–16)
         run: |
-          for f in examples/recipe1{1..5}*.py; do
+          for f in examples/recipe1{1..6}*.py; do
             echo "--- $f ---"
             python "$f" || exit 1
           done
@@ -65,6 +65,11 @@ jobs:
         run: |
           python scripts/check-schema-fields.py
           # verifies evomerge/schemas/ covers all fields from data-loop contract
+
+      - name: JSON Schema export check (schemas/ must be up to date)
+        run: |
+          python scripts/export-schemas.py --check
+          # fails if schemas/*.schema.json differ from Pydantic model output
 
       - name: CLI smoke — export fixture
         run: |
