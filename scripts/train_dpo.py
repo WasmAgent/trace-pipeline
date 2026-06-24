@@ -9,14 +9,21 @@ Usage:
         --sft-checkpoint checkpoints/sft-v2 \
         --out-dir checkpoints/dpo-v1
 
-Apple Silicon notes (from CLAUDE.md):
-  - 1.5B: use --fp32 (bfloat16 → NaN risk on small models)
+    # Merge all known DPO sources automatically:
+    python scripts/train_dpo.py \
+        --merge-all \
+        --sft-checkpoint checkpoints/sft-v2 \
+        --out-dir checkpoints/dpo-v1
+
+Apple Silicon notes:
+  - 1.5B: use --fp32 (bfloat16 -> NaN risk on small models)
   - Always use_cpu=True to avoid MPS wired-memory degradation
-  - effective_batch = batch_size × grad_accum = 1 × 4 = 4 (DPO needs small batch)
+  - effective_batch = batch_size x grad_accum = 1 x 4 = 4 (DPO needs small batch)
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -24,26 +31,60 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+# Default DPO data sources relative to REPO_ROOT
+_DEFAULT_DPO_SOURCES = [
+    "data/training/ifeval/compliance_dpo.jsonl",
+    "data/training/ifeval/cross_mode_dpo.jsonl",
+    "data/training/v2/dpo_merged.jsonl",
+]
+
 
 def load_dpo_records(paths: list[str]) -> list[dict]:
-    records = []
+    """Load and deduplicate DpoTrainingRecord (schema_version=dpo/v1) from JSONL paths.
+
+    Deduplication is performed by SHA-256 hash of (chosen || '||' || rejected)
+    so the same pair loaded from multiple files is only counted once.
+    Files that do not exist are skipped with a warning.
+    """
+    seen: set[str] = set()
+    records: list[dict] = []
     for path in paths:
         p = Path(path.strip())
         if not p.exists():
-            print(f"[warn] not found: {p}", file=sys.stderr)
-            continue
-        n = 0
+            # Try relative to REPO_ROOT
+            p_rel = REPO_ROOT / path.strip()
+            if p_rel.exists():
+                p = p_rel
+            else:
+                print(f"[warn] not found: {path}", file=sys.stderr)
+                continue
+        n_new = 0
+        n_dup = 0
         with open(p) as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
                 r = json.loads(line)
-                if r.get("schema_version") == "dpo/v1":
-                    records.append(r)
-                    n += 1
-        print(f"  loaded {n} DPO records ← {p}")
+                if r.get("schema_version") != "dpo/v1":
+                    continue
+                key = hashlib.sha256(
+                    (r.get("chosen", "") + "||" + r.get("rejected", "")).encode()
+                ).hexdigest()
+                if key in seen:
+                    n_dup += 1
+                    continue
+                seen.add(key)
+                records.append(r)
+                n_new += 1
+        dup_note = f" ({n_dup} duplicates skipped)" if n_dup else ""
+        print(f"  loaded {n_new} DPO records ← {p}{dup_note}")
     return records
+
+
+def load_all_dpo_records() -> list[dict]:
+    """Convenience: merge all known DPO sources and deduplicate."""
+    return load_dpo_records([str(REPO_ROOT / s) for s in _DEFAULT_DPO_SOURCES])
 
 
 def to_hf_dataset(records: list[dict]):
@@ -64,12 +105,19 @@ def to_hf_dataset(records: list[dict]):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--dpo-data", required=True, metavar="FILES",
-                    help="comma-separated DPO JSONL paths")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--dpo-data", metavar="FILES",
+                     help="comma-separated DPO JSONL paths")
+    src.add_argument("--merge-all", action="store_true",
+                     help="merge all known DPO sources and deduplicate")
     ap.add_argument("--sft-checkpoint", required=True, metavar="DIR",
                     help="SFT checkpoint directory (with adapter_config.json OR config.json)")
     ap.add_argument("--out-dir", default="checkpoints/dpo-v1", metavar="DIR")
-    ap.add_argument("--max-steps", type=int, default=200)
+    # Epoch-based is the primary training mode; max-steps overrides when > 0
+    ap.add_argument("--epochs", type=int, default=3,
+                    help="number of training epochs (default 3)")
+    ap.add_argument("--max-steps", type=int, default=-1,
+                    help="override epochs with a fixed step count (-1 = use --epochs)")
     ap.add_argument("--lr", type=float, default=5e-5)
     ap.add_argument("--beta", type=float, default=0.1,
                     help="DPO temperature (default 0.1)")
@@ -81,8 +129,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    paths = [p.strip() for p in args.dpo_data.split(",") if p.strip()]
-    records = load_dpo_records(paths)
+    if args.merge_all:
+        records = load_all_dpo_records()
+    else:
+        paths = [p.strip() for p in args.dpo_data.split(",") if p.strip()]
+        records = load_dpo_records(paths)
     if not records:
         print("[error] no DPO records loaded", file=sys.stderr)
         return 1
@@ -143,7 +194,8 @@ def main() -> int:
 
     training_args = DPOConfig(
         output_dir=str(out),
-        max_steps=args.max_steps,
+        num_train_epochs=args.epochs if args.max_steps <= 0 else 1,
+        max_steps=args.max_steps,  # -1 means use epochs
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         learning_rate=args.lr,
@@ -167,6 +219,7 @@ def main() -> int:
     )
 
     print(f"\nDPO training...")
+    print(f"  epochs       : {args.epochs if args.max_steps <= 0 else 'N/A (max_steps)'}")
     print(f"  max_steps    : {args.max_steps}")
     print(f"  beta         : {args.beta}")
     print(f"  n_dpo_pairs  : {len(records)}")
@@ -180,7 +233,8 @@ def main() -> int:
         "sft_checkpoint": str(sft_ckpt),
         "n_dpo_pairs": len(records),
         "beta": args.beta,
-        "max_steps": args.max_steps,
+        "num_train_epochs": args.epochs if args.max_steps <= 0 else None,
+        "max_steps": args.max_steps if args.max_steps > 0 else None,
         "lr": args.lr,
     }
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
