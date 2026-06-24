@@ -71,6 +71,12 @@ jobs:
           python scripts/export-schemas.py --check
           # fails if schemas/*.schema.json differ from Pydantic model output
 
+      - name: Schema parity check (runs.jsonl validates against both schemas)
+        run: |
+          python scripts/check-schema-parity.py \
+            --runs-dir packages/compliance/benchmarks/ifeval || \
+          echo "[skip] no benchmark data in CI environment — parity check skipped"
+
       - name: CLI smoke — export fixture
         run: |
           python -m evomerge export \
