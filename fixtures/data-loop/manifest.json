@@ -1,0 +1,14 @@
+{
+  "description": "Minimal 2-branch fixture for data-loop smoke tests",
+  "schema_version": "rollout-wire/v1",
+  "rollout_id": "00000000-0000-0000-0000-000000000001",
+  "n_branches": 2,
+  "expected": {
+    "n_sft": 1,
+    "n_dpo": 1,
+    "n_ppo": 2,
+    "chosen_branch": 0,
+    "rejected_branch": 1
+  },
+  "sync_note": "This file must be byte-identical across evomerge-framework, wasmagent-js, and bscode. Update all three repos in the same PR when changing."
+}

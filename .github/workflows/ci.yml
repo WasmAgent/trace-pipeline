@@ -54,9 +54,31 @@ jobs:
             python "$f" || exit 1
           done
 
+      - name: Schema drift check (standalone, no wasmagent-js required)
+        run: |
+          python scripts/check-schema-fields.py
+          # verifies evomerge/schemas/ covers all fields from data-loop contract
+
+      - name: CLI smoke — export fixture
+        run: |
+          python -m evomerge export \
+            --rollout fixtures/data-loop/rollout-branches.v1.jsonl \
+            --out-dir /tmp/evomerge-smoke
+          test -f /tmp/evomerge-smoke/manifest.json
+          test -f /tmp/evomerge-smoke/sft.jsonl
+          test -f /tmp/evomerge-smoke/dpo.jsonl
+          test -f /tmp/evomerge-smoke/ppo.jsonl
+
+      - name: CLI smoke — validate exported SFT
+        run: |
+          python -m evomerge validate \
+            --input /tmp/evomerge-smoke/sft.jsonl \
+            --strict
+
       - name: Lint
         run: |
-          ruff check eval_trust/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/ examples/
+          ruff check eval_trust/ evomerge/ tests/ run_audit.py \
+            papers/eval_trust/scripts/ benchmarks/ examples/ scripts/
 
   paper:
     name: paper builds (pandoc + tectonic)
@@ -95,3 +117,4 @@ jobs:
           test -f papers/eval_trust/draft.pdf
           test -f papers/eval_trust/arxiv_upload.tar.gz
           ls -lah papers/eval_trust/draft.pdf papers/eval_trust/arxiv_upload.tar.gz
+
