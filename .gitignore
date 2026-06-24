@@ -14,4 +14,13 @@ papers/eval_trust/arxiv_upload/
 data/training/
 data/synthetic/
 checkpoints/
+
+# ML model artifacts — binary files, not suitable for git
+data/router/*.joblib
+data/router/router_records.jsonl
+*.joblib
+*.pt
+*.safetensors
+*.gguf
+*.bin
 outputs/

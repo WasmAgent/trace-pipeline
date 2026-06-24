@@ -184,7 +184,7 @@ def main() -> int:
     print(f"\nloading model: {args.base_model} [{dtype_str}]")
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
-        torch_dtype=dtype,
+        dtype=dtype,
         device_map="cpu",       # avoid MPS wired-memory degradation
         trust_remote_code=True,
     )
@@ -243,8 +243,7 @@ def main() -> int:
         use_cpu=True,
         bf16=args.bf16 and not args.fp32,
         fp16=False,
-        max_seq_length=max_seq_len,
-        dataset_text_field="text",
+        max_length=max_seq_len,
         report_to="none",
     )
 
@@ -252,7 +251,7 @@ def main() -> int:
         model=model,
         args=training_args,
         train_dataset=ds,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         callbacks=[LossThresholdCallback(args.loss_threshold)],
     )
 
