@@ -41,6 +41,8 @@ BENCHMARK_DIRS = [
 ]
 
 FEATURE_NAMES = [
+    "taskspec_has_tools",    # 1 if task requires tool calls (from TaskSpec; 0 for IFEval)
+    "taskspec_n_allowed_tools",  # number of allowed tools (0 for IFEval)
     "n_violations",
     "n_hard_violations",
     "n_soft_violations",
@@ -90,6 +92,7 @@ def _extract_features(direct_rec: dict) -> list[float]:
     is_qwen    = 1.0 if "qwen" in direct_rec.get("model", "").lower() else 0.0
 
     return [
+        0.0, 0.0,              # taskspec_has_tools, taskspec_n_allowed_tools (IFEval has no tools)
         n_v, n_hard, n_soft, n_format, n_content,
         repair_rounds, n_ok, n_fail,
         latency, prompt_tok, gen_tok, tok_ratio,
@@ -248,22 +251,25 @@ def save_router_records(samples: list[Sample], out_path: Path) -> None:
     records = []
     for s in samples:
         f = s.features
+        # FEATURE_NAMES order: has_tools(0), n_allowed_tools(1), n_v(2), n_hard(3),
+        # n_soft(4), n_format(5), n_content(6), repair_rounds(7), n_ok(8), n_fail(9),
+        # latency(10), prompt_tok(11), gen_tok(12), tok_ratio(13), is_qwen(14)
         features = RouterFeatures(
-            taskspec_n_constraints=int(f[0]),
-            taskspec_n_hard=int(f[1]),
-            taskspec_has_tools=0,
-            taskspec_n_allowed_tools=0,
+            taskspec_n_constraints=int(f[2]),        # n_violations as proxy
+            taskspec_n_hard=int(f[3]),
+            taskspec_has_tools=int(f[0]),
+            taskspec_n_allowed_tools=int(f[1]),
             taskspec_max_repair_rounds=3,
-            eval_repair_rounds=int(f[5]),
-            eval_violation_count=int(f[0]),
-            eval_hard_violation_count=int(f[1]),
+            eval_repair_rounds=int(f[7]),
+            eval_violation_count=int(f[2]),
+            eval_hard_violation_count=int(f[3]),
             eval_tool_calls_total=0,
             eval_tool_calls_valid=0,
             eval_tool_validity_rate=1.0,
             eval_escalated=0,
-            eval_latency_ms=float(f[8]),
-            eval_prompt_tokens=int(f[9]),
-            eval_generation_tokens=int(f[10]),
+            eval_latency_ms=float(f[10]),
+            eval_prompt_tokens=int(f[11]),
+            eval_generation_tokens=int(f[12]),
         )
         records.append(RouterRecord(
             task_id=f"{s.task_id}@{s.subdir}",
