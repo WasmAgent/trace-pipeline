@@ -1054,8 +1054,8 @@ updating before final submission.
   single-model SC-greedy gap (12.5 pp) from paired-comparison delta noise
   floor (which depends on between-candidate lottery correlation); R-6 \S3.4
   "Recovery" column re-cast as within-candidate delta with the n=199 vs
-  n=200 caveat; R-7 C2/C3 contributions de-duplicated; R-8 1102-test count
-  separated from the 39-test toolkit count.
+  n=200 caveat; R-7 C2/C3 contributions de-duplicated; R-8 288-test count
+  (53 eval_trust + 235 evomerge pipeline) separated from the toolkit count.
 - v0.3 also fixed 4 secondary issues (R-9..R-12): R-9 cite format wrapped
   uniformly to `[@key]`; R-10 single-candidate-audit limitation made
   explicit in \S8; R-11 \S5.2.2 table's per-tensor row clarified to

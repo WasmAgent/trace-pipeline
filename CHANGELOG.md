@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   recipe14 (eval harness), recipe15 (significance testing).
 - CI expanded: schema drift check, CLI smoke (export + validate), lint covers
   `evomerge/` and `scripts/`.
-- 185 new tests (226 total, up from 41).
+- 247 new tests (288 total, up from 41).
 
 ## [Unreleased]
 

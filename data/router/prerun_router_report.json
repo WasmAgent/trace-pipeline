@@ -1,0 +1,24 @@
+{
+  "n_samples": 300,
+  "n_features": 5,
+  "feature_type": "static_taskspec_only",
+  "cv_accuracy_mean": 0.8766666666666666,
+  "cv_accuracy_std": 0.008164965809277232,
+  "cv_f1_macro_mean": 0.625160075329567,
+  "cv_f1_macro_std": 0.002398747017414781,
+  "cv_f1_weighted_mean": 0.822708097928437,
+  "cv_f1_weighted_std": 0.011283336931916528,
+  "label_distribution": {
+    "need_repair": 37,
+    "need_large_model": 130,
+    "small_model_can_handle": 133
+  },
+  "feature_importances": {
+    "taskspec_n_constraints": 0.5661980021524498,
+    "taskspec_n_hard": 0.43380199784755014,
+    "taskspec_has_tools": 0.0,
+    "taskspec_n_allowed_tools": 0.0,
+    "taskspec_max_repair_rounds": 0.0
+  },
+  "model_path": "/Users/I041705/github/evomerge-framework/data/router/router_prerun_gbdt.joblib"
+}

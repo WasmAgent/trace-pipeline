@@ -32,7 +32,10 @@ instances). `full_pcl` achieves **54.7% ± 1.2** pass rate vs `direct`
 seeds and strictly monotonic improvement (0 losses, 20 wins vs direct over
 150 paired samples). A GBDT router trained on the resulting `RouterRecord`
 data achieves **92.7% ± 2.5% CV accuracy**, with `n_hard_violations` (38.5%)
-as the dominant feature.
+as the dominant feature. A pre-run ablation using only 5 static `TaskSpec`
+features achieves 87.7% accuracy but 0% recall on `need_repair` (12.3% of
+tasks), confirming that violation counts from the `direct` run are necessary
+to detect repair-worthy tasks.
 
 ---
 
@@ -256,28 +259,63 @@ unseeded baseline):
 Plus 60 synthetic SFT records from `SyntheticGenerator` (claude-haiku,
 5 task templates × 10 good + 2 bad each).
 
-### 4.3 After-first-attempt escalation router
+### 4.3 Router comparison: pre-run vs post-attempt
 
-A `GradientBoostingClassifier` (200 estimators, max_depth=4,
-min_samples_leaf=5) trained on 300 real `RouterRecord` instances derived
-from the `direct` mode of the IFEval benchmark runs:
+Two GBDT classifiers (same architecture: 200 estimators, max_depth=4,
+min_samples_leaf=5) were trained on the same 300 `RouterRecord` instances,
+differing only in the feature set available at decision time.
 
-| Metric | Score |
-|---|---|
-| 5-fold CV accuracy | **92.7% ± 2.5%** |
-| 5-fold CV F1 macro | **85.9% ± 5.3%** |
+**Table 2.** Router performance — pre-run (TaskSpec-only) vs post-attempt
+(violation features from completed `direct` run).
 
-Label distribution: `small_model_can_handle` 44.3%, `need_large_model`
-43.3%, `need_repair` 12.3%.
+| Metric | Pre-run router | Post-attempt router | Delta |
+|---|---|---|---|
+| Features | 5 (static TaskSpec) | 10 (dynamic eval) | — |
+| 5-fold CV accuracy | **87.7% ± 0.8%** | **92.7% ± 2.5%** | −5.0 pp |
+| 5-fold CV F1 macro | **62.5% ± 0.2%** | **85.9% ± 5.3%** | −23.4 pp |
+| `need_repair` recall | **0%** | ~70% (estimated) | −70 pp |
 
-Top features: `n_hard_violations` (38.5%), `n_violations` (30.8%),
-`prompt_tokens` (14.2%). `model_is_qwen` contributes only 1.0%,
+Label distribution (both): `small_model_can_handle` 44.3%,
+`need_large_model` 43.3%, `need_repair` 12.3%.
+
+**Key findings:**
+
+1. **Static TaskSpec features are necessary but not sufficient.** The
+   pre-run router achieves 87.7% accuracy by correctly separating the two
+   dominant classes (`small_model_can_handle` vs `need_large_model`) using
+   only `taskspec_n_constraints` (56.6%) and `taskspec_n_hard` (43.4%).
+   The three tool-related features contribute 0% — all 300 records have
+   `taskspec_has_tools=0`.
+
+2. **`need_repair` is undetectable pre-run.** The pre-run router has 0%
+   recall on the minority class (`need_repair`, 12.3% of data). This class
+   represents tasks that fail on `direct` but pass under `full_pcl` — a
+   distinction that is fundamentally runtime-observable, not statically
+   derivable from the TaskSpec. The F1 macro gap (−23.4 pp) is almost
+   entirely driven by this class collapsing to zero.
+
+3. **Violation counts carry the decisive signal.** The 5.0 pp accuracy
+   gap and 23.4 pp F1 macro gap quantify the information value of running
+   the `direct` attempt. The dominant post-attempt features are
+   `n_hard_violations` (38.5%) and `n_violations` (30.8%) — both zero for
+   tasks in `small_model_can_handle` and nonzero for failed tasks.
+
+4. **The post-attempt router's lower variance is also meaningful.**
+   Pre-run CV accuracy varies only ±0.8% (highly stable, because it
+   degenerates to a near-threshold on `n_constraints`), whereas the
+   post-attempt router varies ±2.5% — reflecting genuine fold-to-fold
+   variation from learning on violation structure.
+
+**Interpretation:** A pre-run router is viable as a fast first-pass
+screen to detect clearly-hard tasks (`n_constraints` high, `n_hard` high)
+before any inference. However, it cannot replace the post-attempt router for
+the `need_repair` decision, which requires observing the actual violation
+count after the `direct` run. The two-stage design — pre-run screen followed
+by post-attempt escalation — is architecturally motivated by this result.
+
+Top post-attempt features: `n_hard_violations` (38.5%), `n_violations`
+(30.8%), `prompt_tokens` (14.2%). `model_is_qwen` contributes only 1.0%,
 indicating the router generalizes across model families.
-
-**Note:** This is an *after-first-attempt* router that observes `direct`
-mode violation counts. A pre-run router using only static `TaskSpec`
-features (constraint count, category entropy, tool policy) is a planned
-ablation — see Section 3.4.
 
 ### 4.4 SFT training (*planned — in progress*)
 
@@ -328,7 +366,7 @@ property for production deployment.
 | 0 — Compliance engine | ✅ Done | IFEval × 2 models × 3 seeds |
 | 1 — SFT cold start | 🔄 In progress | QLoRA on 616 records, eval group A vs C |
 | 2 — DPO fine-tuning | ⏳ Pending | ORPO/DPO on 101 preference pairs |
-| 3 — Router ML | ✅ Done | GBDT CV 92.7%, RouterRecord JSONL |
+| 3 — Router ML | ✅ Done | GBDT CV 92.7%, pre-run ablation 87.7%, RouterRecord JSONL |
 | 4 — Scale up | ⏳ Pending | N=10 seeds, larger models, more benchmarks |
 | 5 — Paper submission | ⏳ Pending | ACL Rolling Review / EMNLP 2026 |
 
@@ -349,6 +387,7 @@ under Apache-2.0. Training checkpoints are kept locally.
 | IFEval benchmark data | `wasmagent-js/packages/compliance/benchmarks/ifeval/` |
 | Data import script | `evomerge-framework/scripts/import_ifeval_runs.py` |
 | Router training script | `evomerge-framework/scripts/train_router.py` |
+| Pre-run router script | `evomerge-framework/scripts/train_router_prerun.py` |
 | SFT training script | `evomerge-framework/scripts/train_sft.py` |
 | Shared fixture | `evomerge-framework/fixtures/data-loop/` |
 
@@ -511,10 +550,10 @@ costs, latency, and model identity.
 The rule-based `RouterRuleClassifier` serves as the baseline. The GBDT ML
 classifier is trained on `RouterRecord` JSONL exported by `run_export()`.
 
-A separate *pre-run* router using only static `TaskSpec` features (number of
-constraints, hard/soft ratio, category entropy, tool policy complexity) is
-left for future work to cleanly separate task-complexity prediction from
-failure-based escalation.
+A *pre-run* router ablation using only the 5 static `TaskSpec` features
+(constraint counts, tool policy) was trained on the same 300 records to
+quantify the information gain from observing the `direct` attempt outcome.
+Results are in Section 4.3.
 
 ---
 

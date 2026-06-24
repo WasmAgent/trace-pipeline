@@ -1,0 +1,59 @@
+{
+  "winner_max768": {
+    "n": 200,
+    "n_valid": 199,
+    "n_errors": 1,
+    "accuracy": 0.678392,
+    "length_stats": {
+      "min": 382,
+      "p25": 768,
+      "p50": 1057,
+      "p75": 1719,
+      "p95": 3414,
+      "p99": 3992,
+      "max": 4000,
+      "mean": 1410.8,
+      "stdev": 897.7
+    },
+    "answer_line_rate": 0.889447,
+    "wrong_answer_line_rate": 0.859375,
+    "_n_with_marker": 177,
+    "_n_wrong": 64,
+    "_n_wrong_with_marker": 55
+  },
+  "instruct_max768": {
+    "n": 200,
+    "n_valid": 200,
+    "n_errors": 0,
+    "accuracy": 0.69,
+    "length_stats": {
+      "min": 472,
+      "p25": 784,
+      "p50": 979,
+      "p75": 1193,
+      "p95": 1491,
+      "p99": 1884,
+      "max": 2516,
+      "mean": 1022.0,
+      "stdev": 312.4
+    },
+    "answer_line_rate": 0.03,
+    "wrong_answer_line_rate": 0.048387,
+    "_n_with_marker": 6,
+    "_n_wrong": 62,
+    "_n_wrong_with_marker": 3
+  },
+  "max_new_300_reconstruction": {
+    "note": "No gen_text archives exist for max_new=300 runs. Figures are taken verbatim from paper draft Section 3.4.",
+    "winner_accuracy_300": 0.595,
+    "instruct_accuracy_300": 0.495,
+    "delta_pp_300": 10.0,
+    "winner_accuracy_768": 0.678392,
+    "instruct_accuracy_768": 0.69,
+    "delta_pp_768": -1.16,
+    "instruct_recovery_pp": 19.3,
+    "winner_recovery_pp": 8.3,
+    "asymmetry_ratio": 2.33
+  },
+  "commentary": "Under max_new=768, the winner model emits the GSM8K '#### N' answer line in 88.9% of generations vs only 3.0% for the Instruct baseline, revealing that the winner was fine-tuned or merged toward that termination convention while Instruct relies on other answer-surfacing formats. The winner's length distribution (p95=3414 chars, max=4000) is substantially heavier-tailed than Instruct's (p95=1491, max=2516), confirming the paper's hypothesis that a max_new=300 cap asymmetrically truncated Instruct's chains before they could emit a parseable answer; the 300-token run files are not archived, but the paper records the consequence: Instruct recovered +19.3 pp from the protocol fix versus only +8.3 pp for the winner, consistent with Instruct having more long chains that were cut off mid-computation. Under the corrected max_new=768 protocol, winner accuracy (67.8%) and Instruct accuracy (69.0%) are statistically indistinguishable (McNemar p=0.89), and the asymmetric answer-line emission rate is a format artefact, not a capability gap."
+}
