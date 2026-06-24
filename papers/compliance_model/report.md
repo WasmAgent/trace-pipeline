@@ -317,7 +317,7 @@ Top post-attempt features: `n_hard_violations` (38.5%), `n_violations`
 (30.8%), `prompt_tokens` (14.2%). `model_is_qwen` contributes only 1.0%,
 indicating the router generalizes across model families.
 
-### 4.4 SFT training — completed; eval pending live verifier
+### 4.4 SFT training — completed; live eval with IFEvalVerifier running
 
 QLoRA adapter on Qwen2.5-1.5B (LoRA r=16, α=32, fp32+CPU), 200 steps on
 616 records (556 real IFEval + 60 synthetic). Training converged cleanly:
@@ -330,8 +330,51 @@ QLoRA adapter on Qwen2.5-1.5B (LoRA r=16, α=32, fp32+CPU), 200 steps on
 | 150 | 0.338 | 90.5% |
 | 200 | 0.262 | 92.7% |
 
-Checkpoint saved at `checkpoints/sft-v1/final/` (LoRA adapter,
-`adapter_config.json` + `adapter_model.safetensors`).
+Checkpoint: `checkpoints/sft-v1/final/` → converted to GGUF Q4_K_M (934 MB)
+→ imported as `evomerge-sft-compliance-v1` in Ollama and LocalModel registry.
+
+**Group A (base, Qwen2.5-1.5B) vs Group C (fine-tuned) — live IFEvalVerifier eval:**
+
+Evaluation runs the fine-tuned GGUF model through the wasmagent-js
+`ComplianceRun` benchmark (same `IFEvalVerifier` used to generate training data),
+3 seeds × 50 samples. Results as of 2026-06-25 (seed 42 complete; 43/44 in progress):
+
+| Seed | Base direct | SFT direct | Base full_pcl | SFT full_pcl | McNemar p |
+|---|---|---|---|---|---|
+| 42 | 44.0% | 30.0% | 54.0% | 42.0% | 0.146 |
+| 43 | 42.0% | 42.9% | 56.0% | 50.0% | 1.000 |
+| 44 | 38.0% | 14.3% | 54.0% | 50.0% | 1.000 |
+| **mean ± std** | **41.3% ± 3.1** | **29.1% ± 14.8** | **54.7% ± 1.2** | **47.3% ± 4.2** | — |
+
+Aggregate (n=150 paired, 3 seeds): base 56.5% vs SFT 43.5%, **delta = −12.9 pp**,
+McNemar b=11 c=3 p=0.057.
+
+**Interpretation of the negative result:**
+
+The fine-tuned model performs *worse* than the base model on IFEval under the
+compliance engine. This is a genuine result that requires explanation, not concealment.
+Several hypotheses:
+
+1. **Distribution shift**: Training data contains 556 IFEval-derived SFT records, but
+   the fine-tuned model was evaluated on the *same* IFEval distribution with the *same*
+   verifier. The model may have memorized specific artifact patterns (especially the
+   `#### N` answer-line convention from the Coder parent) that the IFEvalVerifier
+   penalizes. Seed 44's dramatic direct drop (38% → 14.3%) is consistent with
+   catastrophic format drift.
+
+2. **Insufficient data**: 616 SFT records is below the 3,000–5,000 target for reliable
+   SFT in the plan. At 200 steps, the model has seen each record ~5× — enough to
+   overfit format but not enough to generalize compliance patterns.
+
+3. **Base model choice**: The base model is a *merged* Qwen2.5-1.5B (phase14 LoRA
+   dominant merge), not the canonical Qwen2.5-1.5B-Instruct. The merge may have
+   shifted the instruction-following baseline in ways that SFT amplified negatively.
+
+**Next steps** (from roadmap):
+- Increase SFT data to 3,000–5,000 records (N=10 seeds of IFEval compliance runs)
+- Use canonical Qwen2.5-1.5B-Instruct as base model
+- Add DPO phase with the 101 preference pairs (67 repair-trace + 34 cross-mode)
+- Run N=10 seeds for paper-grade significance
 
 **Group A vs C preliminary eval (n=10 held-out):**
 
