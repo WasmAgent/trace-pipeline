@@ -47,9 +47,16 @@ jobs:
           python papers/eval_trust/scripts/make_figures.py
           # ensures figures are reproducible from data/ alone
 
-      - name: Run all 10 examples
+      - name: Run all 10 eval_trust examples
         run: |
-          for f in examples/recipe*.py; do
+          for f in examples/recipe{1..10}*.py; do
+            echo "--- $f ---"
+            python "$f" || exit 1
+          done
+
+      - name: Run evomerge pipeline examples (recipe11–15)
+        run: |
+          for f in examples/recipe1{1..5}*.py; do
             echo "--- $f ---"
             python "$f" || exit 1
           done

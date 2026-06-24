@@ -122,10 +122,88 @@ Or via the project Makefile (`make help` shows all 14 targets):
 
 ```bash
 make install    # pip install -e ".[dev]"
-make pytest     # 41 unit tests
+make pytest     # 226 unit + integration tests
 make ci         # everything CI runs (test + lint + reproducer + self-test + examples)
 make paper      # rebuild draft.pdf + arxiv_upload.tar.gz (needs pandoc + tectonic)
 ```
+
+---
+
+## WasmAgent trace-to-training pipeline (`evomerge` package)
+
+This repository also contains a second package — `evomerge` — that converts
+WasmAgent runtime traces into training data for compliance-conditioned small
+model post-training.
+
+### Install
+
+```bash
+pip install -e ".[dev]"
+```
+
+### 30-second demo: fixture → SFT + DPO
+
+```bash
+python -m evomerge export \
+  --rollout fixtures/data-loop/rollout-branches.v1.jsonl \
+  --out-dir /tmp/demo
+cat /tmp/demo/manifest.json
+# {"n_sft": 1, "n_dpo": 1, "n_ppo": 2, ...}
+```
+
+### Package layout
+
+```
+evomerge/
+├── schemas/        Pydantic models (RolloutBranchRecord, ComplianceEvalRecord,
+│                   SftTrainingRecord, DpoTrainingRecord, PpoTrainingRecord …)
+├── pipeline/       trace → SFT / DPO / PPO / compliance-SFT converters
+├── io.py           load_jsonl / write_jsonl / load_rollouts / load_router_records
+├── export.py       run_export() — full pipeline in one call
+├── validate/       contamination (8-gram Jaccard) + schema structural checks
+├── synthesize/     TaskSpec templates + SyntheticGenerator (teacher model)
+├── eval/           EvalHarness (A/B/C/D/E groups), EvalMetrics, stat_bridge
+├── router/         RouterFeatures, RouterLabel, RouterRuleClassifier
+└── __main__.py     CLI: export / router / validate / synthesize
+```
+
+### CLI
+
+| Command | What it does |
+|---|---|
+| `python -m evomerge export` | rollout + compliance JSONL → sft/dpo/ppo/router.jsonl |
+| `python -m evomerge validate` | schema + contamination check on any training JSONL |
+| `python -m evomerge router` | batch routing predictions with rule classifier |
+| `python -m evomerge synthesize` | generate synthetic samples via teacher model |
+
+### Schema contract
+
+Schemas mirror wasmagent-js TypeScript interfaces and are validated by CI:
+
+```bash
+python scripts/check-schema-fields.py
+# [OK] rollout-wire (contract)
+# [OK] training-record/dpo (contract)
+# ✓ no schema drift detected
+```
+
+Pass `--wasmagent-js /path/to/repo` to check against the canonical JSON Schema files.
+
+### Shared fixture
+
+`fixtures/data-loop/rollout-branches.v1.jsonl` — 2-branch rollout fixture
+(1 pass / 1 fail). Must be byte-identical across evomerge-framework, wasmagent-js,
+and bscode. Sync all three repos in the same PR when changing.
+
+### Recipes
+
+| File | Topic |
+|---|---|
+| `examples/recipe11_rollout_to_sft.py` | rollout JSONL → SFT records |
+| `examples/recipe12_rollout_to_dpo.py` | rollout JSONL → DPO preference pairs |
+| `examples/recipe13_compliance_sft.py` | ComplianceEvalRecord → answerer + repairer |
+| `examples/recipe14_eval_harness.py` | A/B/C/D/E comparison harness |
+| `examples/recipe15_significance.py` | McNemar + bootstrap: C > A at p < 0.05 |
 
 ---
 
@@ -143,7 +221,7 @@ make paper      # rebuild draft.pdf + arxiv_upload.tar.gz (needs pandoc + tecton
 
 ## License
 
-- **Code** (`eval_trust/`, `tests/`): Apache-2.0 (see `LICENSE`)
+- **Code** (`eval_trust/`, `evomerge/`, `tests/`): Apache-2.0 (see `LICENSE`)
 - **Paper** (`papers/eval_trust/draft.{pdf,md}`): CC BY 4.0
 - **Data** (`data/`): CC BY 4.0 (these are evaluation logs of public Qwen
   models on GSM8K, both of which are publicly licensed)
