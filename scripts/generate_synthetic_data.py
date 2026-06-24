@@ -44,7 +44,21 @@ def _make_chat_fn(model: str, max_tokens: int):
         print("[error] pip install anthropic", file=sys.stderr)
         sys.exit(1)
 
-    client = anthropic.Anthropic()
+    import os
+    # Support local proxy (ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL)
+    # or standard cloud key (ANTHROPIC_API_KEY)
+    kwargs = {}
+    if os.environ.get("ANTHROPIC_AUTH_TOKEN") and os.environ.get("ANTHROPIC_BASE_URL"):
+        kwargs["auth_token"] = os.environ["ANTHROPIC_AUTH_TOKEN"]
+        kwargs["base_url"]   = os.environ["ANTHROPIC_BASE_URL"]
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        kwargs["api_key"] = os.environ["ANTHROPIC_API_KEY"]
+    else:
+        print("[error] set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN+ANTHROPIC_BASE_URL",
+              file=sys.stderr)
+        sys.exit(1)
+
+    client = anthropic.Anthropic(**kwargs)
 
     def chat_fn(messages: list[dict]) -> str:
         resp = client.messages.create(
@@ -74,8 +88,10 @@ def main() -> int:
                     help="print config and exit, make no API calls")
     args = ap.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[error] ANTHROPIC_API_KEY not set", file=sys.stderr)
+    if not (os.environ.get("ANTHROPIC_API_KEY") or
+            (os.environ.get("ANTHROPIC_AUTH_TOKEN") and os.environ.get("ANTHROPIC_BASE_URL"))):
+        print("[error] set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN+ANTHROPIC_BASE_URL",
+              file=sys.stderr)
         return 1
 
     from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
