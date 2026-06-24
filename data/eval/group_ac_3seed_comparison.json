@@ -26,69 +26,69 @@
     {
       "seed": 43,
       "base_direct": 42.0,
-      "sft_direct": 42.9,
+      "sft_direct": 44.0,
       "base_full_pcl": 56.0,
-      "sft_full_pcl": 50.0,
+      "sft_full_pcl": 54.0,
       "mcnemar_direct": {
-        "n": 7,
-        "b": 0,
-        "c": 1,
+        "n": 50,
+        "b": 3,
+        "c": 4,
         "p": 1.0,
-        "base_pass": 2,
-        "sft_pass": 3
+        "base_pass": 21,
+        "sft_pass": 22
       },
       "mcnemar_full_pcl": {
-        "n": 6,
-        "b": 1,
-        "c": 0,
+        "n": 50,
+        "b": 5,
+        "c": 4,
         "p": 1.0,
-        "base_pass": 4,
-        "sft_pass": 3
+        "base_pass": 28,
+        "sft_pass": 27
       }
     },
     {
       "seed": 44,
       "base_direct": 38.0,
-      "sft_direct": 14.3,
+      "sft_direct": 40.0,
       "base_full_pcl": 54.0,
-      "sft_full_pcl": 50.0,
+      "sft_full_pcl": 54.0,
       "mcnemar_direct": {
-        "n": 7,
-        "b": 1,
-        "c": 0,
+        "n": 50,
+        "b": 5,
+        "c": 6,
         "p": 1.0,
-        "base_pass": 2,
-        "sft_pass": 1
+        "base_pass": 19,
+        "sft_pass": 20
       },
       "mcnemar_full_pcl": {
-        "n": 6,
-        "b": 1,
-        "c": 0,
+        "n": 50,
+        "b": 5,
+        "c": 5,
         "p": 1.0,
-        "base_pass": 4,
-        "sft_pass": 3
+        "base_pass": 27,
+        "sft_pass": 27
       }
     }
   ],
   "aggregate": {
-    "n_paired": 62,
+    "n_paired": 150,
     "n_seeds": 3,
-    "base_full_pcl_mean": 56.45,
-    "sft_full_pcl_mean": 43.55,
-    "delta_pp": -12.9,
-    "mcnemar_b": 11,
-    "mcnemar_c": 3,
-    "mcnemar_p": 0.057373,
+    "base_full_pcl_mean": 54.67,
+    "sft_full_pcl_mean": 50.0,
+    "delta_pp": -4.67,
+    "mcnemar_b": 19,
+    "mcnemar_c": 12,
+    "mcnemar_p": 0.281042,
     "significant_05": false,
-    "bootstrap_ci_lo": 1.61,
-    "bootstrap_ci_hi": 24.19,
+    "bootstrap_ci_lo": -2.67,
+    "bootstrap_ci_hi": 12.0,
     "wilson_ci_base": [
-      44.1,
-      68.1
+      46.7,
+      62.4
     ],
     "wilson_ci_sft": [
-      31.9,
-      55.9
+      42.1,
+      57.9
     ]
   }
 }

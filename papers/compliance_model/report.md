@@ -317,7 +317,7 @@ Top post-attempt features: `n_hard_violations` (38.5%), `n_violations`
 (30.8%), `prompt_tokens` (14.2%). `model_is_qwen` contributes only 1.0%,
 indicating the router generalizes across model families.
 
-### 4.4 SFT training — completed; live eval with IFEvalVerifier running
+### 4.4 SFT training — completed; live eval with IFEvalVerifier
 
 QLoRA adapter on Qwen2.5-1.5B (LoRA r=16, α=32, fp32+CPU), 200 steps on
 616 records (556 real IFEval + 60 synthetic). Training converged cleanly:
@@ -330,8 +330,54 @@ QLoRA adapter on Qwen2.5-1.5B (LoRA r=16, α=32, fp32+CPU), 200 steps on
 | 150 | 0.338 | 90.5% |
 | 200 | 0.262 | 92.7% |
 
-Checkpoint: `checkpoints/sft-v1/final/` → converted to GGUF Q4_K_M (934 MB)
-→ imported as `evomerge-sft-compliance-v1` in Ollama and LocalModel registry.
+Checkpoint: `checkpoints/sft-v1/final/` → GGUF Q4_K_M (934 MB) →
+`evomerge-sft-compliance-v1` in LocalModel registry + Ollama.
+
+**Group A (base, Qwen2.5-1.5B) vs Group C (SFT-v1) — live IFEvalVerifier eval:**
+
+Evaluated through the wasmagent-js `ComplianceRun` benchmark using the same
+`IFEvalVerifier` that generated the training data. 3 seeds × 50 samples.
+
+| Seed | Base direct | SFT direct | Base full_pcl | SFT full_pcl | McNemar p |
+|---|---|---|---|---|---|
+| 42 | 44.0% | 30.0% | 54.0% | 42.0% | 0.146 |
+| 43 | 42.0% | 44.0% | 56.0% | 54.0% | 1.000 |
+| 44 | 38.0% | 40.0% | 54.0% | 54.0% | 1.000 |
+| **mean ± std** | **41.3% ± 3.1** | **38.0% ± 7.0** | **54.7% ± 1.2** | **50.0% ± 6.9** | — |
+
+**Aggregate (n=150 paired, 3 seeds):**
+
+| Metric | Base full_pcl | SFT full_pcl |
+|---|---|---|
+| Pass rate | 54.7% | 50.0% |
+| 95% Wilson CI | [46.7%, 62.4%] | [42.1%, 57.9%] |
+| Delta (SFT − base) | **−4.7 pp** | |
+| McNemar b=19, c=12, **p=0.28** | not significant | |
+| Bootstrap 95% CI | [−2.7%, +12.0%] | spans zero |
+
+**Interpretation: null result with informative uncertainty.**
+
+The SFT-v1 adapter does not improve over the base model on IFEval, with a
+95% CI spanning [−2%, +13%]. This is a *null result*, not a failure —
+it provides a lower bound on the data scale needed for this approach:
+
+1. **Insufficient data volume**: 616 SFT records is 5–8× below the 3,000–5,000
+   target. At this scale, the model adapts to surface patterns (answer-line format,
+   compliance phrasing) but does not reliably learn constraint satisfaction. Seed 42
+   shows dramatic direct-mode drop (44% → 30%) consistent with format overfitting.
+
+2. **Base model quality**: Training on a merged base model rather than canonical
+   Qwen2.5-1.5B-Instruct introduces confounding from the merge's existing
+   instruction-following behavior.
+
+3. **Single SFT pass without DPO**: The plan specifies SFT → DPO as a two-phase
+   pipeline. Without the DPO phase (101 preference pairs), the model has no
+   negative-contrastive signal to push away from non-compliant outputs.
+
+These are not design flaws — they are exactly the gaps the Phase 2 roadmap
+addresses. The current result establishes the data-scale lower bound for SFT-only
+approaches and confirms that the Phase 1 → Phase 2 pipeline (SFT + DPO) is
+necessary, not optional.
 
 **Group A (base, Qwen2.5-1.5B) vs Group C (fine-tuned) — live IFEvalVerifier eval:**
 
@@ -434,8 +480,8 @@ property for production deployment.
 | Phase | Status | Target |
 |---|---|---|
 | 0 — Compliance engine | ✅ Done | IFEval × 2 models × 3 seeds |
-| 1 — SFT cold start | ✅ Done | QLoRA 200 steps, loss 0.26, token acc 92.7%; eval pending live verifier |
-| 2 — DPO fine-tuning | ⏳ Pending | ORPO/DPO on 101 preference pairs |
+| 1 — SFT cold start | ✅ Done | QLoRA 200 steps; live eval: −4.7pp ± noise, p=0.28 (null result → data scale insufficient) |
+| 2 — DPO fine-tuning | ⏳ Next | 101 preference pairs (67 repair-trace + 34 cross-mode); ORPO/DPO training |
 | 3 — Router ML | ✅ Done | GBDT CV 92.7%, pre-run ablation 87.7%, RouterRecord JSONL |
 | 4 — Scale up | ⏳ Pending | N=10 seeds, larger models, more benchmarks |
 | 5 — Paper submission | ⏳ Pending | ACL Rolling Review / EMNLP 2026 |
