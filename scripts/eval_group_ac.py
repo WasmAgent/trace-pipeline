@@ -104,21 +104,36 @@ def _run_group_c_inference(
     tasks_by_id: dict[str, dict],
     model_path: str,
 ) -> list:
-    """Load fine-tuned model and run full_pcl mode inference.
+    """Load fine-tuned LoRA adapter merged onto base model and run inference.
 
-    Returns list of EvalRecord. Raises ImportError if transformers is missing.
+    Returns list of EvalRecord. Raises ImportError if transformers/peft missing.
     """
     from evomerge.eval.metrics import EvalRecord
     from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline as hf_pipeline
-    import time
+    from peft import PeftModel
+    import json, time
 
-    print(f"[group C] loading model from {model_path}", flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
+    # Resolve base model path from adapter_config.json
+    adapter_cfg_path = Path(model_path) / "adapter_config.json"
+    if adapter_cfg_path.exists():
+        adapter_cfg = json.loads(adapter_cfg_path.read_text())
+        base_model_path = adapter_cfg.get("base_model_name_or_path", model_path)
+    else:
+        base_model_path = model_path
+
+    print(f"[group C] loading base model from {base_model_path}", flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_path,
         device_map="cpu",
         trust_remote_code=True,
     )
+
+    print(f"[group C] merging LoRA adapter from {model_path}", flush=True)
+    model = PeftModel.from_pretrained(base_model, model_path)
+    model = model.merge_and_unload()
+    model.eval()
+
     gen_pipe = hf_pipeline(
         "text-generation",
         model=model,
@@ -127,12 +142,27 @@ def _run_group_c_inference(
         do_sample=False,
     )
 
+    # Load samples.jsonl to get actual IFEval prompts
+    samples_path = Path(model_path).parent.parent.parent.parent.parent / \
+        "packages/compliance/benchmarks/ifeval/samples.jsonl"
+    prompt_by_key: dict[int, str] = {}
+    if samples_path.exists():
+        with open(samples_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    s = json.loads(line)
+                    prompt_by_key[s["key"]] = s["prompt"]
+
     records = []
     for task_id in task_ids:
         run = tasks_by_id[task_id]
-        # Reconstruct a prompt from the artifact or task_id
-        artifact = run.get("artifact", {})
-        prompt = artifact.get("prompt") or artifact.get("instruction") or f"Task {task_id}"
+        # Extract IFEval key from task_id (e.g. "ifeval.1154" → key=1154)
+        try:
+            ifeval_key = int(task_id.split(".")[-1])
+        except (ValueError, IndexError):
+            ifeval_key = -1
+        prompt = prompt_by_key.get(ifeval_key) or run.get("artifact", "") or f"Task {task_id}"
 
         # Build compliance-conditioned system prompt (full_pcl mode)
         system_msg = (
@@ -266,7 +296,7 @@ def main() -> int:
     # ── Group C: fine-tuned model + full_pcl ─────────────────────────────────
     print("\nbuilding group C (fine-tuned + full_pcl)...")
 
-    training_complete = final_ckpt.exists() and (final_ckpt / "config.json").exists()
+    training_complete = final_ckpt.exists() and (final_ckpt / "adapter_config.json").exists()
     group_c_source: str
 
     if training_complete:

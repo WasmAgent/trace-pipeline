@@ -14,17 +14,18 @@
       "ifeval.1512"
     ],
     "held_out_n": 10,
-    "group_c_source": "runs_jsonl_full_pcl_proxy",
+    "group_c_source": "fine_tuned_model_inference",
     "final_checkpoint": "checkpoints/sft-v1/final",
     "final_checkpoint_ready": false,
-    "base_model": "/Users/I041705/github/evomerge/phase14_lora_1b5/lora_1b5_dominant/merged_model",
+    "base_model": "/Users/I041705/github/evomerge-framework/../evomerge/phase14_lora_1b5/lora_1b5_dominant/merged_model",
     "bootstrap_iters": 10000
   },
   "training_status": {
     "checkpoint_dir": "/Users/I041705/github/evomerge-framework/checkpoints/sft-v1",
     "checkpoints_present": [
       "checkpoint-100",
-      "checkpoint-50"
+      "checkpoint-150",
+      "checkpoint-200"
     ],
     "final_ready": false
   },
@@ -215,7 +216,7 @@
     ]
   },
   "group_C": {
-    "description": "Base model + compliance engine (full_pcl) — proxy until final checkpoint ready",
+    "description": "Fine-tuned model + compliance engine (full_pcl)",
     "metrics": {
       "group": "C",
       "n": 10,
@@ -229,12 +230,12 @@
         0.0,
         1.0
       ],
-      "repair_success_rate": 0.0,
+      "repair_success_rate": 1.0,
       "evidence_sufficiency": 1.0,
       "fallback_rate": 0.0,
-      "avg_repair_rounds": 1.8,
-      "cost_per_accepted_task": 319.2,
-      "latency_per_accepted_ms": 1347.0,
+      "avg_repair_rounds": 0.0,
+      "cost_per_accepted_task": 420.8,
+      "latency_per_accepted_ms": 7338.9,
       "general_ability_score": null
     },
     "records": [
@@ -244,14 +245,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 36,
-        "generation_tokens": 93,
+        "prompt_tokens": 67,
+        "generation_tokens": 128,
         "repair_tokens": 0,
-        "latency_ms": 1124.0,
+        "latency_ms": 4498.142957687378,
         "general_score": null
       },
       {
@@ -260,14 +261,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 36,
-        "generation_tokens": 450,
+        "prompt_tokens": 95,
+        "generation_tokens": 356,
         "repair_tokens": 0,
-        "latency_ms": 3307.0,
+        "latency_ms": 11586.968898773193,
         "general_score": null
       },
       {
@@ -280,10 +281,10 @@
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 53,
-        "generation_tokens": 135,
+        "prompt_tokens": 92,
+        "generation_tokens": 428,
         "repair_tokens": 0,
-        "latency_ms": 716.0,
+        "latency_ms": 10512.978076934814,
         "general_score": null
       },
       {
@@ -292,14 +293,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 44,
-        "generation_tokens": 618,
+        "prompt_tokens": 402,
+        "generation_tokens": 324,
         "repair_tokens": 0,
-        "latency_ms": 6091.0,
+        "latency_ms": 14044.935941696167,
         "general_score": null
       },
       {
@@ -308,14 +309,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 43,
-        "generation_tokens": 214,
+        "prompt_tokens": 92,
+        "generation_tokens": 160,
         "repair_tokens": 0,
-        "latency_ms": 1973.0,
+        "latency_ms": 4055.095911026001,
         "general_score": null
       },
       {
@@ -328,10 +329,10 @@
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 62,
-        "generation_tokens": 315,
+        "prompt_tokens": 202,
+        "generation_tokens": 190,
         "repair_tokens": 0,
-        "latency_ms": 1587.0,
+        "latency_ms": 4964.883327484131,
         "general_score": null
       },
       {
@@ -340,14 +341,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 64,
-        "generation_tokens": 238,
+        "prompt_tokens": 182,
+        "generation_tokens": 409,
         "repair_tokens": 0,
-        "latency_ms": 2870.0,
+        "latency_ms": 10748.804092407227,
         "general_score": null
       },
       {
@@ -360,10 +361,10 @@
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 89,
-        "generation_tokens": 487,
+        "prompt_tokens": 309,
+        "generation_tokens": 342,
         "repair_tokens": 0,
-        "latency_ms": 2365.0,
+        "latency_ms": 11580.825090408325,
         "general_score": null
       },
       {
@@ -372,14 +373,14 @@
         "final_pass": false,
         "tool_calls_total": 0,
         "tool_calls_valid": 0,
-        "repair_rounds": 3,
+        "repair_rounds": 0,
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 38,
-        "generation_tokens": 529,
+        "prompt_tokens": 332,
+        "generation_tokens": 348,
         "repair_tokens": 0,
-        "latency_ms": 5735.0,
+        "latency_ms": 11797.154903411865,
         "general_score": null
       },
       {
@@ -392,10 +393,10 @@
         "repair_rounds_ok": 0,
         "has_evidence": true,
         "escalated": false,
-        "prompt_tokens": 80,
-        "generation_tokens": 56,
+        "prompt_tokens": 29,
+        "generation_tokens": 91,
         "repair_tokens": 0,
-        "latency_ms": 720.0,
+        "latency_ms": 2296.793222427368,
         "general_score": null
       }
     ]
@@ -438,6 +439,6 @@
     "significant_at_05": false,
     "significant_at_01": false,
     "n_common": 10,
-    "note": "WARNING: Group C uses runs.jsonl full_pcl proxy (base+compliance, not fine-tuned). Re-run after training completes."
+    "note": "Group C uses fine-tuned model inference"
   }
 }
