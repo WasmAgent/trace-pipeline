@@ -33,6 +33,11 @@ from evomerge.pipeline import (
     to_sft_records,
 )
 from evomerge.validate import check_contamination, validate_training_record
+from evomerge.validate.redaction import (
+    RedactionReport,
+    BSCODE_REDACTED_FIELDS,
+    BSCODE_PATTERNS,
+)
 
 
 @dataclass
@@ -179,7 +184,84 @@ def run_export(
         json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False)
     )
     manifest.files["manifest"] = str(manifest_path)
-    return manifest
 
+    # --- contamination report (always written, even when no eval_texts) ---
+    contamination_report: dict = {
+        "n_training": (
+            manifest.n_sft + manifest.n_dpo + manifest.n_ppo
+            + manifest.n_compliance_sft + manifest.n_compliance_dpo
+        ),
+        "n_contaminated": manifest.n_contaminated,
+        "contamination_threshold": contamination_threshold,
+        "eval_texts_provided": eval_texts is not None,
+        "flag_rate": (
+            manifest.n_contaminated
+            / max(manifest.n_sft + manifest.n_dpo + manifest.n_ppo
+                  + manifest.n_compliance_sft + manifest.n_compliance_dpo, 1)
+        ),
+    }
+    contamination_path = out / "contamination_report.json"
+    contamination_path.write_text(
+        json.dumps(contamination_report, indent=2, ensure_ascii=False)
+    )
+    manifest.files["contamination_report"] = str(contamination_path)
+
+    # --- schema report (record counts + file sizes by type) ---
+    schema_report: dict = {
+        "schema_versions": {
+            "rollout_wire": "rollout-wire/v1",
+            "training_record": "training-record/v1",
+        },
+        "record_counts": {
+            "sft": manifest.n_sft,
+            "dpo": manifest.n_dpo,
+            "ppo": manifest.n_ppo,
+            "compliance_sft": manifest.n_compliance_sft,
+            "compliance_dpo": manifest.n_compliance_dpo,
+            "router": manifest.n_router,
+        },
+        "n_invalid": manifest.n_invalid,
+        "output_files": {
+            k: {"path": v, "size_bytes": Path(v).stat().st_size if Path(v).exists() else 0}
+            for k, v in manifest.files.items()
+            if k not in ("schema_report",)
+        },
+    }
+    schema_path = out / "schema_report.json"
+    schema_path.write_text(
+        json.dumps(schema_report, indent=2, ensure_ascii=False)
+    )
+    manifest.files["schema_report"] = str(schema_path)
+
+    # --- redaction report (describes what PII checks were applied to source data) ---
+    # The source redaction version is read from the first record's provenance when
+    # available; otherwise defaults to the bscode standard.
+    redaction_version = "bscode/pii-redact/v1"
+    evidence_source = "client_reported"
+    if rollouts:
+        prov = getattr(rollouts[0], "provenance", None)
+        if isinstance(prov, dict):
+            redaction_version = prov.get("redaction_version", redaction_version)
+            evidence_source = prov.get("evidence_source", evidence_source)
+
+    redaction_report = RedactionReport(
+        redaction_version=redaction_version,
+        evidence_source=evidence_source,
+        fields_redacted=BSCODE_REDACTED_FIELDS,
+        patterns_applied=BSCODE_PATTERNS,
+        n_records_scanned=len(rollouts),
+    )
+    redaction_path = out / "redaction_report.json"
+    redaction_path.write_text(
+        json.dumps(redaction_report.to_dict(), indent=2, ensure_ascii=False)
+    )
+    manifest.files["redaction_report"] = str(redaction_path)
+
+    # Rewrite manifest now that contamination_report + schema_report paths are known
+    manifest_path.write_text(
+        json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False)
+    )
+
+    return manifest
 
 __all__ = ["ExportManifest", "run_export"]

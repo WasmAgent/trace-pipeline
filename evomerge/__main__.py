@@ -121,6 +121,7 @@ def _cmd_compile_context(args: argparse.Namespace) -> int:
 def _cmd_router(args: argparse.Namespace) -> int:
     from evomerge.io import load_router_records
     from evomerge.router.classifier import RouterConfig, RouterRuleClassifier
+    from evomerge.router.labels import RouterLabel
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)
@@ -147,11 +148,21 @@ def _cmd_router(args: argparse.Namespace) -> int:
             "correct": label.value == rec.label.value,
         })
 
+    # Confusion matrix + failure buckets via RouterEvalReport
+    eval_report = clf.evaluate(
+        [rec.features for rec in records],
+        [rec.label for rec in records],
+    )
     n_correct = sum(1 for r in results if r["correct"])
     summary = {
         "n": len(results),
         "n_correct": n_correct,
         "accuracy": round(n_correct / len(results), 4) if results else 0.0,
+        "confusion_matrix": {
+            "labels": eval_report.labels,
+            "matrix": eval_report.confusion_matrix,
+        },
+        "failure_buckets": eval_report.failure_buckets,
         "predictions": results,
     }
 

@@ -11,13 +11,14 @@ Implements plan Section 6 Phase 3:
 """
 from evomerge.router.features import RouterFeatures, feature_from_record
 from evomerge.router.labels import RouterLabel, RouterRecord, label_from_record
-from evomerge.router.classifier import RouterRuleClassifier
+from evomerge.router.classifier import RouterRuleClassifier, RouterEvalReport
 
 __all__ = [
     "RouterFeatures",
     "RouterLabel",
     "RouterRecord",
     "RouterRuleClassifier",
+    "RouterEvalReport",
     "feature_from_record",
     "label_from_record",
 ]

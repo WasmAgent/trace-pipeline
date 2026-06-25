@@ -9,7 +9,8 @@ priority-ordered rule chain so the logic is easy to audit and adjust.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Sequence
 
 from evomerge.router.features import RouterFeatures
 from evomerge.router.labels import RouterLabel
@@ -110,5 +111,85 @@ class RouterRuleClassifier:
         """Batch predict over a list of feature vectors."""
         return [self.predict(f) for f in features_list]
 
+    def evaluate(
+        self,
+        features_list: Sequence[RouterFeatures],
+        labels: Sequence[RouterLabel],
+    ) -> "RouterEvalReport":
+        """Evaluate predictions against ground-truth labels.
 
-__all__ = ["RouterConfig", "RouterRuleClassifier"]
+        Args:
+            features_list: feature vectors to predict on.
+            labels: ground-truth RouterLabel for each vector.
+
+        Returns:
+            RouterEvalReport with accuracy, confusion matrix, and per-label
+            failure buckets (false-positive and false-negative counts).
+        """
+        all_labels = list(RouterLabel)
+        label_to_idx = {lbl: i for i, lbl in enumerate(all_labels)}
+        n = len(all_labels)
+        matrix: list[list[int]] = [[0] * n for _ in range(n)]
+
+        correct = 0
+        for feat, true_lbl in zip(features_list, labels):
+            pred_lbl = self.predict(feat)
+            matrix[label_to_idx[true_lbl]][label_to_idx[pred_lbl]] += 1
+            if pred_lbl == true_lbl:
+                correct += 1
+
+        total = len(labels)
+        accuracy = correct / total if total else 0.0
+
+        # Per-label: false positives (predicted this, not actually this)
+        # and false negatives (actually this, not predicted this)
+        failure_buckets: dict[str, dict[str, int]] = {}
+        for i, lbl in enumerate(all_labels):
+            tp = matrix[i][i]
+            fp = sum(matrix[j][i] for j in range(n) if j != i)
+            fn = sum(matrix[i][j] for j in range(n) if j != i)
+            failure_buckets[lbl.value] = {"tp": tp, "fp": fp, "fn": fn}
+
+        return RouterEvalReport(
+            n_total=total,
+            accuracy=accuracy,
+            labels=[lbl.value for lbl in all_labels],
+            confusion_matrix=matrix,
+            failure_buckets=failure_buckets,
+        )
+
+
+@dataclass
+class RouterEvalReport:
+    """Evaluation report for RouterRuleClassifier.predict_batch against ground truth."""
+
+    n_total: int
+    accuracy: float
+    labels: list[str]
+    confusion_matrix: list[list[int]]
+    failure_buckets: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "n_total": self.n_total,
+            "accuracy": round(self.accuracy, 4),
+            "labels": self.labels,
+            "confusion_matrix": self.confusion_matrix,
+            "failure_buckets": self.failure_buckets,
+        }
+
+    def print_summary(self) -> None:
+        print(f"Accuracy: {self.accuracy:.1%}  (n={self.n_total})")
+        print("\nConfusion matrix (rows=true, cols=predicted):")
+        width = max(len(lbl) for lbl in self.labels)
+        header = " " * (width + 2) + "  ".join(f"{lbl[:8]:>8}" for lbl in self.labels)
+        print(header)
+        for i, lbl in enumerate(self.labels):
+            row = "  ".join(f"{self.confusion_matrix[i][j]:>8}" for j in range(len(self.labels)))
+            print(f"  {lbl:{width}}  {row}")
+        print("\nFailure buckets (tp / fp / fn per label):")
+        for lbl, counts in self.failure_buckets.items():
+            print(f"  {lbl:30}  tp={counts['tp']:4}  fp={counts['fp']:4}  fn={counts['fn']:4}")
+
+
+__all__ = ["RouterConfig", "RouterRuleClassifier", "RouterEvalReport"]
