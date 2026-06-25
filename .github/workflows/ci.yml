@@ -70,6 +70,21 @@ jobs:
           python scripts/check-schema-fields.py
           # verifies evomerge/schemas/ covers all fields from data-loop contract
 
+      - name: Cross-repo schema parity (checkout wasmagent-js main)
+        run: |
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/WasmAgent/wasmagent-js.git /tmp/wasmagent-js
+          cd /tmp/wasmagent-js && git sparse-checkout set \
+            packages/compliance/schemas \
+            packages/core/src/ranking/schemas \
+            packages/compliance/benchmarks/ifeval
+          cd -
+          python scripts/sync-wasmagent-schemas.py \
+            --wasmagent-js /tmp/wasmagent-js --check
+          python scripts/check-schema-parity.py \
+            --runs-dir /tmp/wasmagent-js/packages/compliance/benchmarks/ifeval \
+            --wasmagent-js /tmp/wasmagent-js
+
       - name: JSON Schema export check (schemas/ must be up to date)
         run: |
           python scripts/export-schemas.py --check
