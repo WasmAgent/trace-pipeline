@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -42,7 +40,7 @@ class LSTrace:
 
 def _iso_to_ms(iso: str) -> float:
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
         return dt.timestamp() * 1000
     except (ValueError, OSError):

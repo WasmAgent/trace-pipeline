@@ -140,7 +140,6 @@ def _cmd_compile_context(args: argparse.Namespace) -> int:
 def _cmd_router(args: argparse.Namespace) -> int:
     from evomerge.io import load_router_records
     from evomerge.router.classifier import RouterConfig, RouterRuleClassifier
-    from evomerge.router.labels import RouterLabel
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)

@@ -3,7 +3,6 @@ Reference: https://devblogs.microsoft.com/agent-framework/microsoft-agent-framew
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 @dataclass
 class MSStep:

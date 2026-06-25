@@ -1,5 +1,4 @@
 """Tests for AgentTrustScore."""
-import math
 from evomerge.trust_score import (
     AgentTrustScore, AgentTrustScoreBuilder, compute_trust_score, _geometric_mean
 )

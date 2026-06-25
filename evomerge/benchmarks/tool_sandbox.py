@@ -1,7 +1,6 @@
 """ToolSandbox benchmark adapter. Reference: https://arxiv.org/abs/2408.04682"""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 @dataclass
 class TSToolCall:

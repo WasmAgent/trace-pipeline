@@ -3,7 +3,6 @@ Reference: https://google.github.io/adk-docs/
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 @dataclass
 class ADKEvent:

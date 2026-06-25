@@ -4,7 +4,6 @@ Evaluates agents on real terminal tasks with human-written solutions.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 @dataclass
 class TBCommand:

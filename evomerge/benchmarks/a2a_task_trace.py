@@ -3,7 +3,6 @@ Reference: https://a2a-protocol.org/latest/
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
 
 @dataclass
 class A2AMessage:

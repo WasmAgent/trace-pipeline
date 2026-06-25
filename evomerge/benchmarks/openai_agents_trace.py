@@ -8,7 +8,6 @@ handoff, guardrail, custom. This module converts a full trace to an AEP record.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -35,7 +34,7 @@ class OAITrace:
 
 def _iso_to_ms(iso: str) -> float:
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
         return dt.timestamp() * 1000
     except (ValueError, OSError):
@@ -96,7 +95,6 @@ def oai_trace_to_aep(trace: OAITrace) -> dict:
 
 def load_oai_trace_jsonl(path: str) -> list:
     import json
-    from pathlib import Path
 
     raw_spans = []
     with open(path) as fh:

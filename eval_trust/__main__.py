@@ -124,7 +124,7 @@ def _cmd_conformal(argv: list[str]) -> int:
     p.add_argument("--json", action="store_true", help="Output JSON instead of text")
     args = p.parse_args(argv)
 
-    from eval_trust.conformal_ci import compute_conformal_interval, calibrate_from_holdout
+    from eval_trust.conformal_ci import compute_conformal_interval
 
     calib = _load_correctness(args.calibration)
     residuals = [abs(float(c) - args.prediction) for c in calib]

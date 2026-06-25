@@ -1,9 +1,8 @@
 """Tests for Agent Evidence Registry."""
-import json
 import tempfile
 from pathlib import Path
 
-from evomerge.registry import Registry, RegistryEntry, ENTRY_TYPES
+from evomerge.registry import Registry, RegistryEntry
 
 
 def test_register_and_lookup():

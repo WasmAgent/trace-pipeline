@@ -12,7 +12,7 @@ This module defines:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -120,7 +120,6 @@ class BFCLAdapter:
         Returns list of (result, task) tuples.
         """
         import json
-        from pathlib import Path
         pairs = []
         with open(path) as fh:
             for line in fh:

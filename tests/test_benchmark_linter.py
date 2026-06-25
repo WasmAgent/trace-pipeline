@@ -1,16 +1,11 @@
 """Tests for benchmark linter v0.1."""
 from __future__ import annotations
 
-import os
-import stat
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from evomerge.security.benchmark_linter import (
-    BenchmarkTrustScore,
-    LintFinding,
     lint_benchmark_dir,
 )
 
