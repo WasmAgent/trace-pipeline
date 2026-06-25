@@ -33,6 +33,9 @@ class AEPValidationResult:
     state_changing_actions_with_evidence: int
     state_changing_actions_total: int
     errors: list[str] = field(default_factory=list)
+    has_causal_chain: bool = False
+    has_run_context: bool = False
+    v0_2_fields_count: int = 0
 
     @property
     def evidence_completeness(self) -> float:
@@ -60,9 +63,9 @@ def validate_aep_record(record: dict[str, Any]) -> AEPValidationResult:
             errors.append(f"schema: {e.message}")
     else:
         # Minimal check without jsonschema
-        if record.get("schema_version") != "aep/v0.1":
+        if record.get("schema_version") not in ("aep/v0.1", "aep/v0.2"):
             valid_schema = False
-            errors.append("schema_version must be 'aep/v0.1'")
+            errors.append("schema_version must be 'aep/v0.1' or 'aep/v0.2'")
         if "run_id" not in record:
             valid_schema = False
             errors.append("run_id is required")
@@ -70,6 +73,14 @@ def validate_aep_record(record: dict[str, Any]) -> AEPValidationResult:
     actions = record.get("actions", [])
     sc_actions = [a for a in actions if a.get("state_changing")]
     sc_with_evidence = [a for a in sc_actions if a.get("result_digest") or a.get("evidence_refs")]
+
+    _V0_2_CAUSAL_FIELDS = [
+        "parent_action_id", "causal_chain_id", "scope_lease_id",
+        "input_taint_labels", "memory_read_refs",
+    ]
+    v0_2_count = sum(
+        1 for a in actions for f in _V0_2_CAUSAL_FIELDS if f in a
+    )
 
     return AEPValidationResult(
         run_id=run_id,
@@ -80,6 +91,9 @@ def validate_aep_record(record: dict[str, Any]) -> AEPValidationResult:
         state_changing_actions_total=len(sc_actions),
         state_changing_actions_with_evidence=len(sc_with_evidence),
         errors=errors,
+        has_causal_chain=any("parent_action_id" in a for a in actions),
+        has_run_context="run_context" in record,
+        v0_2_fields_count=v0_2_count,
     )
 
 

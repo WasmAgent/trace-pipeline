@@ -7,6 +7,10 @@
 
 **Measurement trust and trace-to-training backend for WasmAgent.**
 
+**Install:** `pip install evomerge`
+**CLI:**     `evomerge validate-aep / evomerge export / evomerge audit-report`
+**Brand:**   WasmAgent Trace Pipeline
+
 > *trace-pipeline is the research backend that tells you whether your evaluation is trustworthy and whether your runtime traces are safe enough to become training data.*
 
 > **Naming note** — three layers, one project:
@@ -74,6 +78,9 @@ python3 -m evomerge audit-report --aep data/smoke/aep-smoke.jsonl --output AUDIT
 
 # Export to SFT training format
 python3 -m evomerge export --input data/smoke/aep-smoke.jsonl --format sft --output sft.jsonl
+
+# Evidence Admission Score — gate records before training
+python3 -c "from evomerge.validate.quality_gate import admission_gate; print(admission_gate)"
 ```
 
 Dataset card: [`data/smoke/DATASET_CARD.md`](data/smoke/DATASET_CARD.md)

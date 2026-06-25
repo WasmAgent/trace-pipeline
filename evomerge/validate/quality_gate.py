@@ -238,4 +238,129 @@ def run_quality_gate(
 
 
 __all__ = ["QualityIssue", "QualityReport", "check_dpo_quality",
-           "check_sft_quality", "run_quality_gate"]
+           "check_sft_quality", "run_quality_gate",
+           "ADMISSION_CATEGORIES", "compute_admission_score", "admission_gate"]
+
+
+# ── Evidence Admission Score ──────────────────────────────────────────────────
+
+ADMISSION_CATEGORIES = ("train_sft", "train_dpo", "train_repair", "train_router", "audit_only", "reject")
+
+
+def compute_admission_score(
+    aep_record: dict,
+    quality_report: "QualityReport | None" = None,
+) -> dict:
+    """Compute an evidence admission score for a single AEP record.
+
+    Returns a dict with:
+      - score: float in [0.0, 1.0]
+      - category: one of ADMISSION_CATEGORIES
+      - reasons: list of str explaining the score
+      - dimensions: dict of individual dimension scores
+    """
+    reasons: list[str] = []
+    dims: dict[str, float] = {}
+
+    # 1. Schema validity
+    schema_ver = aep_record.get("schema_version", "")
+    if schema_ver not in ("aep/v0.1", "aep/v0.2"):
+        return {"score": 0.0, "category": "reject", "reasons": ["invalid schema_version"], "dimensions": {}}
+    dims["schema_validity"] = 1.0
+
+    # 2. Evidence completeness (state-changing actions with evidence)
+    actions = aep_record.get("actions", [])
+    state_changing = [a for a in actions if a.get("state_changing", False)]
+    with_evidence = [a for a in state_changing if a.get("result_digest") or a.get("precondition_digest")]
+    completeness = (len(with_evidence) / len(state_changing)) if state_changing else 1.0
+    dims["evidence_completeness"] = completeness
+
+    # 3. Policy compliance (capability_decisions present)
+    decisions = aep_record.get("capability_decisions", [])
+    has_policy = len(decisions) > 0 or len(state_changing) == 0
+    dims["policy_compliance"] = 1.0 if has_policy else 0.5
+    if not has_policy:
+        reasons.append("no capability_decisions for state-changing run")
+
+    # 4. Verifier strength (verifier_results present)
+    verifiers = aep_record.get("verifier_results", [])
+    verifier_score = min(1.0, len(verifiers) * 0.5) if verifiers else 0.0
+    dims["verifier_strength"] = verifier_score
+    if not verifiers:
+        reasons.append("no verifier_results")
+
+    # 5. Provenance (repo_commit + model_id)
+    has_provenance = bool(aep_record.get("repo_commit")) and bool(aep_record.get("model_id"))
+    dims["provenance"] = 1.0 if has_provenance else 0.5
+    if not has_provenance:
+        reasons.append("missing repo_commit or model_id")
+
+    # 6. Contamination proxy (tool_manifest_digest present)
+    has_digest = bool(aep_record.get("tool_manifest_digest"))
+    dims["contamination_risk"] = 1.0 if has_digest else 0.7
+    if not has_digest:
+        reasons.append("missing tool_manifest_digest — contamination risk elevated")
+
+    # Weighted score
+    weights = {
+        "schema_validity": 0.20,
+        "evidence_completeness": 0.25,
+        "policy_compliance": 0.20,
+        "verifier_strength": 0.15,
+        "provenance": 0.10,
+        "contamination_risk": 0.10,
+    }
+    score = sum(dims.get(k, 0.0) * w for k, w in weights.items())
+
+    # Routing
+    if score < 0.4:
+        category = "reject"
+        reasons.append(f"score {score:.2f} below reject threshold 0.40")
+    elif score < 0.6:
+        category = "audit_only"
+    else:
+        # Determine training category from verifier results and repair presence
+        has_repair = any("repair" in str(v.get("verifier_id", "")).lower() for v in verifiers)
+        has_dpo_pair = aep_record.get("_dpo_pair_id")  # set by evomerge pipeline
+        passed_count = sum(1 for v in verifiers if v.get("passed"))
+        if has_repair:
+            category = "train_repair"
+        elif has_dpo_pair:
+            category = "train_dpo"
+        elif passed_count > 0 and completeness >= 0.8:
+            category = "train_sft"
+        else:
+            category = "train_router"
+
+    return {
+        "score": round(score, 4),
+        "category": category,
+        "reasons": reasons,
+        "dimensions": {k: round(v, 4) for k, v in dims.items()},
+    }
+
+
+def admission_gate(
+    aep_records: list[dict],
+    min_score: float = 0.6,
+) -> dict:
+    """Run admission scoring over a list of AEP records.
+
+    Returns summary with per-category counts and list of scored records.
+    """
+    scored = [
+        {"record": r, **compute_admission_score(r)}
+        for r in aep_records
+    ]
+    by_category: dict[str, int] = {c: 0 for c in ADMISSION_CATEGORIES}
+    for s in scored:
+        by_category[s["category"]] = by_category.get(s["category"], 0) + 1
+
+    return {
+        "total": len(scored),
+        "by_category": by_category,
+        "admitted": [s for s in scored if s["category"] not in ("reject", "audit_only")],
+        "rejected": [s for s in scored if s["category"] == "reject"],
+        "audit_only": [s for s in scored if s["category"] == "audit_only"],
+        "mean_score": round(sum(s["score"] for s in scored) / len(scored), 4) if scored else 0.0,
+    }
