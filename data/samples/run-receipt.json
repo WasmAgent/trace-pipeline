@@ -1,0 +1,27 @@
+{
+  "receipt_version": "run-receipt/v0.1",
+  "run_id": "sample-export-001",
+  "timestamp_utc": "2026-06-25T13:28:01Z",
+  "operator": "wasmagent-sample",
+  "repo_commit": "7a7d8e354b19886385a3712a31f189165ea0b86b",
+  "evomerge_version": "unknown",
+  "inputs": [
+    {
+      "path": "fixtures/data-loop/rollout-branches.v1.jsonl",
+      "digest": "b441599c2c6ce2d8a045f802a98ff407205a94e19a065007c241be18133c8d17"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "data/samples/sft.jsonl",
+      "digest": "b426c1c12c6b1953e07463cc0f3eb4baa251b6cd4f6de7e8b3ee184687056c70"
+    },
+    {
+      "path": "data/samples/dpo.jsonl",
+      "digest": "5ff9ecd754d0694dfc6ad6e113a8607258193669e5ee20c6e5cabe4bd0a727bf"
+    }
+  ],
+  "model_ids": [],
+  "policy_bundle_digest": "",
+  "notes": ""
+}

@@ -1,0 +1,37 @@
+{
+  "schema_versions": {
+    "rollout_wire": "rollout-wire/v1",
+    "training_record": "training-record/v1"
+  },
+  "record_counts": {
+    "sft": 1,
+    "dpo": 1,
+    "ppo": 2,
+    "compliance_sft": 0,
+    "compliance_dpo": 0,
+    "router": 0
+  },
+  "n_invalid": 0,
+  "output_files": {
+    "sft": {
+      "path": "data/samples/sft.jsonl",
+      "size_bytes": 557
+    },
+    "dpo": {
+      "path": "data/samples/dpo.jsonl",
+      "size_bytes": 840
+    },
+    "ppo": {
+      "path": "data/samples/ppo.jsonl",
+      "size_bytes": 1003
+    },
+    "manifest": {
+      "path": "data/samples/manifest.json",
+      "size_bytes": 309
+    },
+    "contamination_report": {
+      "path": "data/samples/contamination_report.json",
+      "size_bytes": 130
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "redaction_version": "bscode/pii-redact/v1",
+  "evidence_source": "client_reported",
+  "fields_redacted": [
+    "task",
+    "final_answer",
+    "tool_call_sequence",
+    "build_result.stderr"
+  ],
+  "patterns_applied": [
+    "JWT",
+    "API_KEY",
+    "EMAIL"
+  ],
+  "n_records_scanned": 2,
+  "n_fields_modified": 0
+}

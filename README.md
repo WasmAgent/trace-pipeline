@@ -9,11 +9,19 @@
 
 > *trace-pipeline is the research backend that tells you whether your evaluation is trustworthy and whether your runtime traces are safe enough to become training data.*
 
-This repository is the third layer of the [WasmAgent Trustworthy Agent Training Loop](docs/ecosystem-map.md):
+> **Naming note** — three layers, one project:
+> - **`trace-pipeline`** — this GitHub repository (umbrella project)
+> - **`evomerge`** — the pip package (`pip install evomerge`) and CLI (`evomerge …`)
+> - **`eval_trust`** — a submodule inside this repo; imported as `from eval_trust import …`
+
+This repository is the **third layer** of the WasmAgent Trustworthy Agent Training Loop:
 
 ```
-wasmagent-js  →  bscode  →  trace-pipeline  →  better runtime
-(runtime)        (workload)  (measurement + data)    (fed back)
+wasmagent-js  ──►  bscode        ──►  trace-pipeline  ──►  better models
+(runtime /         (reference          (measurement /           │
+ policy / AEP)      deployment /        training data)           │
+                    evidence)                                     │
+      ◄──────────────────────────────────────────────────────────┘
 ```
 
 It has two modules:

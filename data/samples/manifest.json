@@ -1,0 +1,21 @@
+{
+  "out_dir": "data/samples",
+  "n_sft": 1,
+  "n_dpo": 1,
+  "n_ppo": 2,
+  "n_compliance_sft": 0,
+  "n_compliance_dpo": 0,
+  "n_router": 0,
+  "n_invalid": 0,
+  "n_contaminated": 0,
+  "files": {
+    "sft": "data/samples/sft.jsonl",
+    "dpo": "data/samples/dpo.jsonl",
+    "ppo": "data/samples/ppo.jsonl",
+    "manifest": "data/samples/manifest.json",
+    "contamination_report": "data/samples/contamination_report.json",
+    "schema_report": "data/samples/schema_report.json",
+    "redaction_report": "data/samples/redaction_report.json",
+    "dataset_card": "data/samples/DATASET_CARD.md"
+  }
+}

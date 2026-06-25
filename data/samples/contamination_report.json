@@ -1,0 +1,7 @@
+{
+  "n_training": 4,
+  "n_contaminated": 0,
+  "contamination_threshold": 0.2,
+  "eval_texts_provided": false,
+  "flag_rate": 0.0
+}
