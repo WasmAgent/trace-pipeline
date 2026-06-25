@@ -16,6 +16,7 @@
     "model_id": { "type": "string" },
     "policy_bundle_digest": { "type": "string" },
     "tool_manifest_digest": { "type": "string" },
+    "mcp_server_card_digest": { "type": ["string", "null"] },
     "input_refs": {
       "type": "array",
       "items": {
@@ -126,9 +127,26 @@
             "limit": { "type": "number" },
             "spent": { "type": "number" }
           }
+        },
+        "human_approval_budget": {
+          "type": "object",
+          "required": ["spent"],
+          "properties": {
+            "limit": { "type": "number" },
+            "spent": { "type": "number" }
+          }
         }
       }
     },
-    "created_at_ms": { "type": "number" }
+    "created_at_ms": { "type": "number" },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "sig"],
+      "properties": {
+        "alg": { "type": "string" },
+        "key_id": { "type": "string" },
+        "sig": { "type": "string" }
+      }
+    }
   }
 }

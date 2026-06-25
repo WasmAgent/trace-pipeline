@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (gap fill — benchmark adapters + cross-framework + trust score)
+
+**4 new benchmark adapters** (`evomerge/benchmarks/`):
+- `terminal_bench.py` — Terminal-Bench: bash 命令轨迹 → AEP/rollout
+- `tau_bench.py` — τ³-bench: rule violations → verifier scores
+- `tool_sandbox.py` — ToolSandbox: tool errors → deny capability decisions
+- `agent_harm.py` — AgentHarm/OS-Harm/CUAHarm: harm prevention → deny decisions
+- CLI: `import-terminal-bench` / `import-tau-bench` / `import-tool-sandbox` / `import-agent-harm` (均支持 `--format [rollout|aep]`)
+
+**3 new cross-framework imports** (`evomerge/benchmarks/`):
+- `ms_agent_framework_trace.py` — Microsoft Agent Framework 1.0 workflow → AEP
+- `google_adk_trace.py` — Google ADK events → AEP
+- `a2a_task_trace.py` — A2A task → AEP
+- CLI: `import-ms-agent-framework` / `import-adk` / `import-a2a-task`
+
+**`import-otel` CLI 命令** — OTel spans JSONL → AEP JSONL
+
+**AgentTrustScore 补全 5 个缺失维度**：`replay_determinism` / `contamination_resistance` / `tool_misuse_resistance` / `redaction_quality` / `runtime_isolation_level`。现在完整实现文档中的全部 9 维度。2 new tests pass (12 total trust score tests).
+
+**schemas/aep-record.schema.json** — 补全 `mcp_server_card_digest`、`signature`、`human_approval_budget`。
+
 ### Added (P2-3 + P2-4)
 
 - **`eval_trust/exploit_surface.py`** (P2-3) — Agent benchmark exploit surface taxonomy.

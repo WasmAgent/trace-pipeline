@@ -107,3 +107,37 @@ def test_add_dimension_custom():
     builder.add_dimension("custom_check", 0.8)
     score = builder.build()
     assert score.breakdown["custom_check"] == 0.8
+
+
+def test_all_nine_dimensions():
+    builder = AgentTrustScoreBuilder()
+    builder.add_task_success(True)
+    builder.add_benchmark_trust(0.9)
+    builder.add_receipt(True)
+    builder.add_replay_determinism(0.8)
+    builder.add_contamination_resistance(0.7)
+    builder.add_tool_misuse_resistance(0.85)
+    builder.add_redaction_quality(0.95)
+    builder.add_runtime_isolation(1.0)
+    # Add aep-derived dims manually to reach 9
+    builder.add_dimension("evidence_completeness", 1.0)
+    score = builder.build()
+    assert "task_success" in score.breakdown
+    assert "benchmark_trust" in score.breakdown
+    assert "supply_chain_integrity" in score.breakdown
+    assert "replay_determinism" in score.breakdown
+    assert "contamination_resistance" in score.breakdown
+    assert "tool_misuse_resistance" in score.breakdown
+    assert "redaction_quality" in score.breakdown
+    assert "runtime_isolation_level" in score.breakdown
+    assert "evidence_completeness" in score.breakdown
+    assert len(score.breakdown) == 9
+
+
+def test_replay_determinism_zero_collapses():
+    builder = AgentTrustScoreBuilder()
+    builder.add_task_success(True)
+    builder.add_benchmark_trust(1.0)
+    builder.add_replay_determinism(0.0)
+    score = builder.build()
+    assert score.overall == 0.0

@@ -1,24 +1,32 @@
 """evomerge CLI — python -m evomerge <command> [options]
 
 Commands:
-  export              Convert rollout / compliance traces to training JSONL
-  adp-export          Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
-  rl-export           Convert rollout-wire/v1 to RL transition records JSONL
-  compile-context     Convert rollout traces to long-context QA or router/critic records
-  router              Predict routing labels for a batch of router records
-  synthesize          Generate synthetic SFT/DPO samples via a teacher model
-  validate            Run contamination and schema checks on training JSONL
-  validate-aep        Validate AEP (Agent Evidence Protocol) records
-  lint-benchmark      Check a benchmark task dir for anti-reward-hacking exploit surfaces
-  receipt             Produce a run provenance receipt (RunReceipt JSON)
-  import-bfcl         Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
-  import-mcp-atlas    Convert MCP-Atlas results JSONL to rollout-wire/v1 or AEP JSONL
-  import-oai-agents   Convert OpenAI Agents SDK trace JSONL to AEP JSONL
-  import-langsmith    Convert LangSmith/LangGraph trace JSONL to AEP JSONL
-  audit-report        Generate a combined AEP/lint/provenance audit report (Markdown)
-  trust-score         Compute composite AgentTrustScore for an agent run
-  registry-register   Register an artifact in the Agent Evidence Registry
-  registry-list       List entries in the Agent Evidence Registry
+  export                Convert rollout / compliance traces to training JSONL
+  adp-export            Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
+  rl-export             Convert rollout-wire/v1 to RL transition records JSONL
+  compile-context       Convert rollout traces to long-context QA or router/critic records
+  router                Predict routing labels for a batch of router records
+  synthesize            Generate synthetic SFT/DPO samples via a teacher model
+  validate              Run contamination and schema checks on training JSONL
+  validate-aep          Validate AEP (Agent Evidence Protocol) records
+  lint-benchmark        Check a benchmark task dir for anti-reward-hacking exploit surfaces
+  receipt               Produce a run provenance receipt (RunReceipt JSON)
+  import-bfcl           Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
+  import-mcp-atlas      Convert MCP-Atlas results JSONL to rollout-wire/v1 or AEP JSONL
+  import-oai-agents     Convert OpenAI Agents SDK trace JSONL to AEP JSONL
+  import-langsmith      Convert LangSmith/LangGraph trace JSONL to AEP JSONL
+  import-terminal-bench Convert Terminal-Bench results JSONL to rollout-wire/v1 or AEP JSONL
+  import-tau-bench      Convert τ-bench results JSONL to rollout-wire/v1 or AEP JSONL
+  import-tool-sandbox   Convert ToolSandbox results JSONL to rollout-wire/v1 or AEP JSONL
+  import-agent-harm     Convert AgentHarm/OS-Harm/CUAHarm results JSONL to rollout-wire/v1 or AEP JSONL
+  import-otel           Convert OTel spans JSONL to AEP JSONL
+  import-ms-agent-framework Convert Microsoft Agent Framework 1.0 workflow runs to AEP JSONL
+  import-adk            Convert Google ADK trace JSONL to AEP JSONL
+  import-a2a-task       Convert A2A (Agent-to-Agent) task trace JSONL to AEP JSONL
+  audit-report          Generate a combined AEP/lint/provenance audit report (Markdown)
+  trust-score           Compute composite AgentTrustScore for an agent run
+  registry-register     Register an artifact in the Agent Evidence Registry
+  registry-list         List entries in the Agent Evidence Registry
 
 Run `python -m evomerge <command> --help` for per-command options.
 """
@@ -520,6 +528,331 @@ def _cmd_import_langsmith(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# import-terminal-bench
+# ---------------------------------------------------------------------------
+
+def _cmd_import_terminal_bench(args: argparse.Namespace) -> int:
+    """Convert Terminal-Bench results JSONL to rollout-wire/v1 or AEP JSONL."""
+    from evomerge.benchmarks.terminal_bench import TerminalBenchAdapter
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    adapter = TerminalBenchAdapter()
+    pairs = adapter.load_jsonl(args.input)
+
+    fmt = args.format or "rollout"
+    if fmt == "aep":
+        records = adapter.to_aep(pairs)
+    else:
+        records = adapter.to_rollouts(pairs)
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} {fmt} records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-tau-bench
+# ---------------------------------------------------------------------------
+
+def _cmd_import_tau_bench(args: argparse.Namespace) -> int:
+    """Convert τ-bench results JSONL to rollout-wire/v1 or AEP JSONL."""
+    from evomerge.benchmarks.tau_bench import TauBenchAdapter
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    adapter = TauBenchAdapter()
+    pairs = adapter.load_jsonl(args.input)
+
+    fmt = args.format or "rollout"
+    if fmt == "aep":
+        records = adapter.to_aep(pairs)
+    else:
+        records = adapter.to_rollouts(pairs)
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} {fmt} records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-tool-sandbox
+# ---------------------------------------------------------------------------
+
+def _cmd_import_tool_sandbox(args: argparse.Namespace) -> int:
+    """Convert ToolSandbox results JSONL to rollout-wire/v1 or AEP JSONL."""
+    from evomerge.benchmarks.tool_sandbox import ToolSandboxAdapter
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    adapter = ToolSandboxAdapter()
+    pairs = adapter.load_jsonl(args.input)
+
+    fmt = args.format or "rollout"
+    if fmt == "aep":
+        records = adapter.to_aep(pairs)
+    else:
+        records = adapter.to_rollouts(pairs)
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} {fmt} records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-agent-harm
+# ---------------------------------------------------------------------------
+
+def _cmd_import_agent_harm(args: argparse.Namespace) -> int:
+    """Convert AgentHarm/OS-Harm/CUAHarm results JSONL to rollout-wire/v1 or AEP JSONL."""
+    from evomerge.benchmarks.agent_harm import AgentHarmAdapter
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    adapter = AgentHarmAdapter()
+    pairs = adapter.load_jsonl(args.input)
+
+    fmt = args.format or "rollout"
+    if fmt == "aep":
+        records = adapter.to_aep(pairs)
+    else:
+        records = adapter.to_rollouts(pairs)
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} {fmt} records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-otel
+# ---------------------------------------------------------------------------
+
+def _cmd_import_otel(args: argparse.Namespace) -> int:
+    """Convert OTel spans JSONL (grouped by trace_id) to AEP JSONL."""
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    # Load spans and group by trace_id
+    from collections import defaultdict
+    spans_by_trace: dict[str, list[dict]] = defaultdict(list)
+    with open(args.input) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            span = json.loads(line)
+            trace_id = span.get("trace_id") or span.get("traceId") or "unknown"
+            spans_by_trace[trace_id].append(span)
+
+    def _span_name(span: dict) -> str:
+        return span.get("name") or span.get("operationName") or ""
+
+    def _span_kind(span: dict) -> str:
+        return str(span.get("kind") or span.get("spanKind") or "")
+
+    records = []
+    for trace_id, spans in spans_by_trace.items():
+        actions = []
+        verifier_results = []
+        model_id = ""
+
+        for span in spans:
+            name = _span_name(span)
+            kind = _span_kind(span).lower()
+            span_id = span.get("span_id") or span.get("spanId") or ""
+            attrs = span.get("attributes") or span.get("tags") or {}
+
+            # Extract model id from attributes if present
+            if not model_id:
+                model_id = (
+                    attrs.get("model")
+                    or attrs.get("llm.model")
+                    or attrs.get("gen_ai.request.model")
+                    or ""
+                )
+
+            name_lower = name.lower()
+            is_tool = name_lower.startswith("tool") or kind == "client"
+            is_verifier = name_lower == "guardrail" or "policy" in name_lower
+
+            if is_verifier:
+                triggered = attrs.get("triggered", False)
+                passed = not triggered
+                verifier_results.append({
+                    "verifier_id": f"guardrail/{name}",
+                    "passed": passed,
+                    "score": 1.0 if passed else 0.0,
+                    "claim_ids": [span_id] if span_id else [],
+                })
+            elif is_tool:
+                error = span.get("error") or attrs.get("error") or None
+                tool_name = attrs.get("tool_name") or attrs.get("rpc.method") or name
+                state_changing = attrs.get("state_changing", error is None)
+                if isinstance(state_changing, str):
+                    state_changing = state_changing.lower() not in ("false", "0", "no")
+                action: dict = {
+                    "action_id": span_id or f"span-{len(actions)}",
+                    "tool_name": tool_name,
+                    "state_changing": bool(state_changing),
+                    "result_digest": None,
+                    "evidence_refs": [],
+                    "timestamp_ms": 0.0,
+                }
+                actions.append(action)
+
+        records.append({
+            "schema_version": "aep/v0.1",
+            "run_id": f"otel/{trace_id}",
+            "model_id": model_id,
+            "model_provider": "otel",
+            "input_refs": [{"uri": f"otel/trace/{trace_id}"}],
+            "output_refs": [],
+            "capability_decisions": [],
+            "actions": actions,
+            "verifier_results": verifier_results,
+            "created_at_ms": 0,
+        })
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+
+# ---------------------------------------------------------------------------
+# import-ms-agent-framework
+# ---------------------------------------------------------------------------
+
+def _cmd_import_ms_agent_framework(args: argparse.Namespace) -> int:
+    """Convert Microsoft Agent Framework 1.0 workflow runs to AEP JSONL."""
+    from evomerge.benchmarks.ms_agent_framework_trace import load_ms_workflow_jsonl, ms_workflow_to_aep
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    runs = load_ms_workflow_jsonl(args.input)
+    records = [ms_workflow_to_aep(r) for r in runs]
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-adk
+# ---------------------------------------------------------------------------
+
+def _cmd_import_adk(args: argparse.Namespace) -> int:
+    """Convert Google ADK trace JSONL to AEP JSONL."""
+    from evomerge.benchmarks.google_adk_trace import load_adk_trace_jsonl, adk_trace_to_aep
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    traces = load_adk_trace_jsonl(args.input)
+    records = [adk_trace_to_aep(t) for t in traces]
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# import-a2a-task
+# ---------------------------------------------------------------------------
+
+def _cmd_import_a2a_task(args: argparse.Namespace) -> int:
+    """Convert A2A (Agent-to-Agent) task trace JSONL to AEP JSONL."""
+    from evomerge.benchmarks.a2a_task_trace import load_a2a_task_jsonl, a2a_task_to_aep
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    tasks = load_a2a_task_jsonl(args.input)
+    records = [a2a_task_to_aep(t) for t in tasks]
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # audit-report
 # ---------------------------------------------------------------------------
 
@@ -803,6 +1136,31 @@ def _build_parser() -> argparse.ArgumentParser:
     ls_p.add_argument("--output", metavar="FILE", required=True,
                       help="output AEP JSONL path")
 
+    # --- import-ms-agent-framework ---
+    ms_p = sub.add_parser("import-ms-agent-framework",
+                          help="convert Microsoft Agent Framework 1.0 workflow runs to AEP JSONL")
+    ms_p.add_argument("--input", metavar="FILE", required=True,
+                      help="MS Agent Framework workflow runs JSONL (each line: one WorkflowRun)")
+    ms_p.add_argument("--output", metavar="FILE", required=True,
+                      help="output AEP JSONL path")
+
+    # --- import-adk ---
+    adk_p = sub.add_parser("import-adk",
+                           help="convert Google ADK trace JSONL to AEP JSONL")
+    adk_p.add_argument("--input", metavar="FILE", required=True,
+                       help="Google ADK events JSONL (each line: one ADKEvent)")
+    adk_p.add_argument("--output", metavar="FILE", required=True,
+                       help="output AEP JSONL path")
+
+    # --- import-a2a-task ---
+    a2a_p = sub.add_parser("import-a2a-task",
+                           help="convert A2A (Agent-to-Agent) task trace JSONL to AEP JSONL")
+    a2a_p.add_argument("--input", metavar="FILE", required=True,
+                       help="A2A task JSONL (each line: one A2ATask)")
+    a2a_p.add_argument("--output", metavar="FILE", required=True,
+                       help="output AEP JSONL path")
+
+
     # --- audit-report ---
     ar_p = sub.add_parser("audit-report",
                           help="generate a combined AEP/lint/provenance audit report (Markdown)")
@@ -831,6 +1189,54 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="run receipt JSON path (presence signals supply chain integrity)")
     ts_p.add_argument("--output", metavar="PATH", default="-",
                       help="output JSON path (default: stdout)")
+
+    # --- import-terminal-bench ---
+    tb_p = sub.add_parser("import-terminal-bench",
+                          help="convert Terminal-Bench results JSONL to rollout-wire/v1 or AEP JSONL")
+    tb_p.add_argument("--input", metavar="FILE", required=True,
+                      help="Terminal-Bench results JSONL (each line: task+result fields merged)")
+    tb_p.add_argument("--output", metavar="FILE", required=True,
+                      help="output JSONL path")
+    tb_p.add_argument("--format", choices=["rollout", "aep"], default="rollout",
+                      help="output format: rollout-wire/v1 or AEP (default: rollout)")
+
+    # --- import-tau-bench ---
+    tau_p = sub.add_parser("import-tau-bench",
+                           help="convert τ-bench results JSONL to rollout-wire/v1 or AEP JSONL")
+    tau_p.add_argument("--input", metavar="FILE", required=True,
+                       help="τ-bench results JSONL (each line: task+result fields merged)")
+    tau_p.add_argument("--output", metavar="FILE", required=True,
+                       help="output JSONL path")
+    tau_p.add_argument("--format", choices=["rollout", "aep"], default="rollout",
+                       help="output format: rollout-wire/v1 or AEP (default: rollout)")
+
+    # --- import-tool-sandbox ---
+    ts_p = sub.add_parser("import-tool-sandbox",
+                          help="convert ToolSandbox results JSONL to rollout-wire/v1 or AEP JSONL")
+    ts_p.add_argument("--input", metavar="FILE", required=True,
+                      help="ToolSandbox results JSONL (each line: task+result fields merged)")
+    ts_p.add_argument("--output", metavar="FILE", required=True,
+                      help="output JSONL path")
+    ts_p.add_argument("--format", choices=["rollout", "aep"], default="rollout",
+                      help="output format: rollout-wire/v1 or AEP (default: rollout)")
+
+    # --- import-agent-harm ---
+    ah_p = sub.add_parser("import-agent-harm",
+                          help="convert AgentHarm/OS-Harm/CUAHarm results JSONL to rollout-wire/v1 or AEP JSONL")
+    ah_p.add_argument("--input", metavar="FILE", required=True,
+                      help="AgentHarm results JSONL (each line: task+result fields merged)")
+    ah_p.add_argument("--output", metavar="FILE", required=True,
+                      help="output JSONL path")
+    ah_p.add_argument("--format", choices=["rollout", "aep"], default="rollout",
+                      help="output format: rollout-wire/v1 or AEP (default: rollout)")
+
+    # --- import-otel ---
+    otel_p = sub.add_parser("import-otel",
+                            help="convert OTel spans JSONL to AEP JSONL")
+    otel_p.add_argument("--input", metavar="FILE", required=True,
+                        help="OTel spans JSONL (each line: one span dict with trace_id)")
+    otel_p.add_argument("--output", metavar="FILE", required=True,
+                        help="output AEP JSONL path")
 
     # --- registry-register ---
     rr_p = sub.add_parser("registry-register",
@@ -883,6 +1289,14 @@ def main(argv: list[str] | None = None) -> int:
         "import-mcp-atlas": _cmd_import_mcp_atlas,
         "import-oai-agents": _cmd_import_oai_agents,
         "import-langsmith": _cmd_import_langsmith,
+        "import-terminal-bench": _cmd_import_terminal_bench,
+        "import-tau-bench": _cmd_import_tau_bench,
+        "import-tool-sandbox": _cmd_import_tool_sandbox,
+        "import-agent-harm": _cmd_import_agent_harm,
+        "import-otel": _cmd_import_otel,
+        "import-ms-agent-framework": _cmd_import_ms_agent_framework,
+        "import-adk": _cmd_import_adk,
+        "import-a2a-task": _cmd_import_a2a_task,
         "audit-report": _cmd_audit_report,
         "trust-score": _cmd_trust_score,
         "registry-register": _cmd_registry_register,
