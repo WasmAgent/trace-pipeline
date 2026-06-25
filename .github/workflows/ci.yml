@@ -112,6 +112,17 @@ jobs:
             --input /tmp/evomerge-smoke/sft.jsonl \
             --strict
 
+      - name: Dataset card smoke (generate + check)
+        run: |
+          python scripts/generate-dataset-card.py \
+            --manifest /tmp/evomerge-smoke/manifest.json \
+            --name wasmagent-smoke-v1 \
+            --date 2026-06-25 \
+            --out /tmp/evomerge-smoke/DATASET_CARD.md
+          python scripts/generate-dataset-card.py \
+            --manifest /tmp/evomerge-smoke/manifest.json \
+            --check
+
       - name: Lint
         run: |
           ruff check eval_trust/ evomerge/ tests/ run_audit.py \
