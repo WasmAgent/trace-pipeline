@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (P2 — Trust Score + Evidence Registry)
+
+- **`evomerge/trust_score.py`** — Agent Trust Score (P2-1). `AgentTrustScore` 综合评分（geometric
+  mean of: task_success / evidence_completeness / policy_compliance / budget_compliance /
+  verifier_agreement / benchmark_trust / supply_chain_integrity）。`AgentTrustScoreBuilder`
+  fluent API + `compute_trust_score()` 便捷函数。Grade A–F 映射。10 tests pass。
+  CLI: `python -m evomerge trust-score [--aep F] [--task-passed] [--benchmark-trust F] [--receipt F]`.
+
+- **`evomerge/registry.py`** — Agent Evidence Registry (P2-2). 轻量 signed-JSON artifact
+  registry，支持 8 种条目类型：`policy_bundle` / `verifier` / `benchmark_task` / `receipt` /
+  `model_profile` / `router_profile` / `dataset_card` / `aep_schema`。SHA-256 digest tamper-evidence。
+  `Registry.verify_entries()` 校验全库。7 tests pass。
+  CLI: `registry-register` / `registry-list`。
+
 ### Added (P1 — cross-framework + router bridge)
 
 - **`evomerge/benchmarks/langsmith_trace.py`** — LangSmith/LangGraph trace → AEP import.

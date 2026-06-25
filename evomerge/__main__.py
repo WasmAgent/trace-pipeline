@@ -16,6 +16,9 @@ Commands:
   import-oai-agents   Convert OpenAI Agents SDK trace JSONL to AEP JSONL
   import-langsmith    Convert LangSmith/LangGraph trace JSONL to AEP JSONL
   audit-report        Generate a combined AEP/lint/provenance audit report (Markdown)
+  trust-score         Compute composite AgentTrustScore for an agent run
+  registry-register   Register an artifact in the Agent Evidence Registry
+  registry-list       List entries in the Agent Evidence Registry
 
 Run `python -m evomerge <command> --help` for per-command options.
 """
@@ -543,6 +546,119 @@ def _cmd_audit_report(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# trust-score
+# ---------------------------------------------------------------------------
+
+def _cmd_trust_score(args: argparse.Namespace) -> int:
+    """Compute composite AgentTrustScore for an agent run."""
+    from evomerge.trust_score import AgentTrustScoreBuilder
+
+    builder = AgentTrustScoreBuilder()
+
+    if args.aep:
+        aep_path = Path(args.aep)
+        if not aep_path.exists():
+            print(f"[error] AEP file not found: {aep_path}", file=sys.stderr)
+            return 1
+        with open(aep_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    record = json.loads(line)
+                    builder.add_aep_record(record)
+                    break  # use first record when a single AEP run is expected
+
+    if args.task_passed:
+        builder.add_task_success(True)
+
+    if args.benchmark_trust is not None:
+        builder.add_benchmark_trust(args.benchmark_trust)
+
+    has_receipt = False
+    if args.receipt:
+        receipt_path = Path(args.receipt)
+        if not receipt_path.exists():
+            print(f"[error] receipt file not found: {receipt_path}", file=sys.stderr)
+            return 1
+        has_receipt = True
+
+    builder.add_receipt(has_receipt)
+
+    score = builder.build()
+    result = score.to_dict()
+
+    if args.output and args.output != "-":
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        print(f"[ok] trust score written to {out_path}")
+    else:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# registry-register
+# ---------------------------------------------------------------------------
+
+def _cmd_registry_register(args: argparse.Namespace) -> int:
+    """Register an artifact in the Agent Evidence Registry."""
+    from evomerge.registry import Registry, RegistryEntry
+
+    reg_dir = Path(args.registry_dir)
+    meta: dict = {}
+    for kv in args.meta or []:
+        if "=" not in kv:
+            print(f"[error] --meta must be KEY=VALUE, got: {kv!r}", file=sys.stderr)
+            return 1
+        k, v = kv.split("=", 1)
+        meta[k] = v
+
+    entry = RegistryEntry(
+        id=args.id,
+        entry_type=args.type,
+        version=args.version,
+        artifact_path=args.artifact or "",
+        metadata=meta,
+    )
+
+    try:
+        reg = Registry(reg_dir)
+        reg.register(entry)
+        reg.save()
+    except ValueError as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(entry.to_dict(), indent=2, ensure_ascii=False))
+    print(f"[ok] registered {entry.id!r} in {reg_dir / Registry.INDEX_FILE}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# registry-list
+# ---------------------------------------------------------------------------
+
+def _cmd_registry_list(args: argparse.Namespace) -> int:
+    """List entries in the Agent Evidence Registry."""
+    from evomerge.registry import Registry
+
+    reg_dir = Path(args.registry_dir)
+    index_path = reg_dir / Registry.INDEX_FILE
+    if not index_path.exists():
+        print(f"[error] registry index not found: {index_path}", file=sys.stderr)
+        return 1
+
+    reg = Registry(reg_dir)
+    entries = reg.list_by_type(args.type) if args.type else reg.all()
+
+    result = [e.to_dict() for e in entries]
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print(f"[ok] {len(result)} entr{'y' if len(result) == 1 else 'ies'} in {reg_dir}", file=sys.stderr)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # argument parser
 # ---------------------------------------------------------------------------
 
@@ -702,6 +818,45 @@ def _build_parser() -> argparse.ArgumentParser:
     ar_p.add_argument("--output", metavar="PATH", default="-",
                       help="output Markdown path (default: stdout)")
 
+    # --- trust-score ---
+    ts_p = sub.add_parser("trust-score",
+                          help="compute composite AgentTrustScore for an agent run")
+    ts_p.add_argument("--aep", metavar="FILE",
+                      help="AEP records JSONL file (uses first record)")
+    ts_p.add_argument("--task-passed", action="store_true",
+                      help="mark task as successfully completed")
+    ts_p.add_argument("--benchmark-trust", type=float, metavar="FLOAT",
+                      help="benchmark environment trust score (0.0–1.0, from lint-benchmark)")
+    ts_p.add_argument("--receipt", metavar="FILE",
+                      help="run receipt JSON path (presence signals supply chain integrity)")
+    ts_p.add_argument("--output", metavar="PATH", default="-",
+                      help="output JSON path (default: stdout)")
+
+    # --- registry-register ---
+    rr_p = sub.add_parser("registry-register",
+                          help="register an artifact in the Agent Evidence Registry")
+    rr_p.add_argument("--registry-dir", metavar="DIR", default="registry",
+                      help="registry root directory (default: registry/)")
+    rr_p.add_argument("--id", metavar="STRING", required=True,
+                      help="unique registry entry ID")
+    rr_p.add_argument("--type", metavar="TYPE", required=True,
+                      help="entry type: policy_bundle | verifier | benchmark_task | receipt | "
+                           "model_profile | router_profile | dataset_card | aep_schema")
+    rr_p.add_argument("--version", metavar="STRING", required=True,
+                      help="semver or free-form version string")
+    rr_p.add_argument("--artifact", metavar="FILE",
+                      help="path to the artifact file (digest computed automatically)")
+    rr_p.add_argument("--meta", metavar="KEY=VALUE", action="append",
+                      help="metadata key=value pair (repeatable)")
+
+    # --- registry-list ---
+    rl2_p = sub.add_parser("registry-list",
+                           help="list entries in the Agent Evidence Registry")
+    rl2_p.add_argument("--registry-dir", metavar="DIR", default="registry",
+                       help="registry root directory (default: registry/)")
+    rl2_p.add_argument("--type", metavar="TYPE", default="",
+                       help="filter by entry type (default: all)")
+
     return p
 
 
@@ -729,6 +884,9 @@ def main(argv: list[str] | None = None) -> int:
         "import-oai-agents": _cmd_import_oai_agents,
         "import-langsmith": _cmd_import_langsmith,
         "audit-report": _cmd_audit_report,
+        "trust-score": _cmd_trust_score,
+        "registry-register": _cmd_registry_register,
+        "registry-list": _cmd_registry_list,
     }
     return dispatch[args.command](args)
 
