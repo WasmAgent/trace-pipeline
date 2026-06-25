@@ -13,7 +13,7 @@
 | **Version** | {{VERSION}} |
 | **Created** | {{DATE}} |
 | **Source repo** | [wasmagent-js](https://github.com/WasmAgent/wasmagent-js) + [bscode](https://github.com/WasmAgent/bscode) |
-| **Pipeline** | [evomerge-framework](https://github.com/telleroutlook/evomerge-framework) |
+| **Pipeline** | [trace-pipeline](https://github.com/WasmAgent/trace-pipeline) |
 | **License** | {{LICENSE}} |
 
 ---
@@ -63,7 +63,7 @@ Invalid records dropped: {{N_INVALID}}
 Reproduce with:
 
 ```bash
-# From evomerge-framework repo root
+# From trace-pipeline repo root
 python -m evomerge export \
   --rollout {{ROLLOUT_JSONL_PATH}} \
   --out-dir {{OUT_DIR}} \

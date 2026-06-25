@@ -168,5 +168,5 @@
   "title": "RolloutBranchRecord",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/rollout-wire.schema.json"
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/rollout-wire.schema.json"
 }

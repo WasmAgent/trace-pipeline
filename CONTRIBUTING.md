@@ -21,8 +21,8 @@ to discuss before writing code.
 ## Quick start
 
 ```bash
-git clone https://github.com/telleroutlook/evomerge-framework
-cd evomerge-framework
+git clone https://github.com/WasmAgent/trace-pipeline
+cd trace-pipeline
 pip install -e ".[dev]"
 
 # Run all tests

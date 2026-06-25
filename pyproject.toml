@@ -35,8 +35,8 @@ train  = ["scikit-learn>=1.3", "joblib>=1.3", "peft>=0.10", "trl>=0.8", "transfo
 evomerge = "evomerge.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/telleroutlook/evomerge-framework"
-Paper = "https://github.com/telleroutlook/evomerge-framework/blob/main/papers/eval_trust/draft.pdf"
+Homepage = "https://github.com/WasmAgent/trace-pipeline"
+Paper = "https://github.com/WasmAgent/trace-pipeline/blob/main/papers/eval_trust/draft.pdf"
 
 [tool.setuptools.packages.find]
 include = ["eval_trust*", "evomerge*"]

@@ -1,7 +1,7 @@
 """Integration smoke test: full data-loop from fixture JSONL to training output.
 
 Uses fixtures/data-loop/rollout-branches.v1.jsonl — the same file that is
-byte-identical across evomerge-framework, wasmagent-js, and bscode.
+byte-identical across trace-pipeline, wasmagent-js, and bscode.
 
 Expected counts (from fixtures/data-loop/manifest.json):
   n_sft  = 1  (only the passing branch, branch_index=0)

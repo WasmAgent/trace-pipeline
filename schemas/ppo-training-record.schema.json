@@ -155,5 +155,5 @@
   "title": "PpoTrainingRecord",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/ppo-training-record.schema.json"
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/ppo-training-record.schema.json"
 }

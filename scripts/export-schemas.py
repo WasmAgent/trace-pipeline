@@ -83,7 +83,7 @@ SCHEMA_TARGETS = [
     ),
 ]
 
-BASE_URI = "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/"
+BASE_URI = "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/"
 
 
 def _load_class(module_path: str, class_name: str):

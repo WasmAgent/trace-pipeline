@@ -10,5 +10,5 @@
     "chosen_branch": 0,
     "rejected_branch": 1
   },
-  "sync_note": "This file must be byte-identical across evomerge-framework, wasmagent-js, and bscode. Update all three repos in the same PR when changing."
+  "sync_note": "This file must be byte-identical across trace-pipeline, wasmagent-js, and bscode. Update all three repos in the same PR when changing."
 }

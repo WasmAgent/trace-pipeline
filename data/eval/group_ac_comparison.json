@@ -17,11 +17,11 @@
     "group_c_source": "fine_tuned_model_inference",
     "final_checkpoint": "checkpoints/sft-v1/final",
     "final_checkpoint_ready": false,
-    "base_model": "/Users/I041705/github/evomerge-framework/../evomerge/phase14_lora_1b5/lora_1b5_dominant/merged_model",
+    "base_model": "/Users/I041705/github/trace-pipeline/../evomerge/phase14_lora_1b5/lora_1b5_dominant/merged_model",
     "bootstrap_iters": 10000
   },
   "training_status": {
-    "checkpoint_dir": "/Users/I041705/github/evomerge-framework/checkpoints/sft-v1",
+    "checkpoint_dir": "/Users/I041705/github/trace-pipeline/checkpoints/sft-v1",
     "checkpoints_present": [
       "checkpoint-100",
       "checkpoint-150",

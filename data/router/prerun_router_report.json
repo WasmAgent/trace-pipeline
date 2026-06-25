@@ -20,5 +20,5 @@
     "taskspec_n_allowed_tools": 0.0,
     "taskspec_max_repair_rounds": 0.0
   },
-  "model_path": "/Users/I041705/github/evomerge-framework/data/router/router_prerun_gbdt.joblib"
+  "model_path": "/Users/I041705/github/trace-pipeline/data/router/router_prerun_gbdt.joblib"
 }

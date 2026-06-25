@@ -2,7 +2,7 @@
 
 > Draft: 2026-06-25
 > Status: working draft — SFT-v3 + DPO experiments in progress
-> Repo: `evomerge-framework` · `wasmagent-js/packages/compliance`
+> Repo: `trace-pipeline` · `wasmagent-js/packages/compliance`
 >
 > *Previous working title: "WasmAgent-native Compliance-conditioned Small Models"*
 > *Renamed to focus on the data construction contribution, not the final model.*
@@ -173,7 +173,7 @@ Each run produces a `ComplianceEvalRecord` containing: the final artifact,
 ### 3.2 Training data construction
 
 We construct three types of training records from `ComplianceEvalRecord`
-lists using the `evomerge-framework` pipeline:
+lists using the `trace-pipeline` pipeline:
 
 **Compliance SFT** (`compliance_to_sft_records`):
 - *Answerer records*: `task_context → compliant artifact` for all
@@ -498,17 +498,17 @@ under Apache-2.0. Training checkpoints are kept locally.
 
 | Artifact | Location |
 |---|---|
-| JSON Schema files (9 schemas) | `evomerge-framework/schemas/` |
-| Training pipeline | `evomerge-framework/evomerge/pipeline/` |
-| Eval harness + stat bridge | `evomerge-framework/evomerge/eval/` |
-| Router (features + GBDT) | `evomerge-framework/evomerge/router/`, `data/router/` |
-| CLI | `evomerge-framework/evomerge/__main__.py` |
+| JSON Schema files (9 schemas) | `trace-pipeline/schemas/` |
+| Training pipeline | `trace-pipeline/evomerge/pipeline/` |
+| Eval harness + stat bridge | `trace-pipeline/evomerge/eval/` |
+| Router (features + GBDT) | `trace-pipeline/evomerge/router/`, `data/router/` |
+| CLI | `trace-pipeline/evomerge/__main__.py` |
 | IFEval benchmark data | `wasmagent-js/packages/compliance/benchmarks/ifeval/` |
-| Data import script | `evomerge-framework/scripts/import_ifeval_runs.py` |
-| Router training script | `evomerge-framework/scripts/train_router.py` |
-| Pre-run router script | `evomerge-framework/scripts/train_router_prerun.py` |
-| SFT training script | `evomerge-framework/scripts/train_sft.py` |
-| Shared fixture | `evomerge-framework/fixtures/data-loop/` |
+| Data import script | `trace-pipeline/scripts/import_ifeval_runs.py` |
+| Router training script | `trace-pipeline/scripts/train_router.py` |
+| Pre-run router script | `trace-pipeline/scripts/train_router_prerun.py` |
+| SFT training script | `trace-pipeline/scripts/train_sft.py` |
+| Shared fixture | `trace-pipeline/fixtures/data-loop/` |
 
 ---
 
@@ -521,7 +521,7 @@ under Apache-2.0. Training checkpoints are kept locally.
 5. IFEval: Zhou et al., arXiv:2311.07911
 6. TRL / PEFT: Hugging Face (2024)
 7. McNemar (1947), Wilson (1927), Efron (1979): see `eval_trust/paired_stats.py`
-8. eval_trust: telleroutlook, evomerge-framework (2026)
+8. eval_trust: telleroutlook, trace-pipeline (2026)
 
 ---
 
@@ -595,7 +595,7 @@ specific violation types.
 
 ### 3.1 Training data pipeline
 
-The `evomerge-framework` pipeline converts WasmAgent runtime traces into
+The `trace-pipeline` pipeline converts WasmAgent runtime traces into
 three record types:
 
 **SFT records** (`sft/v1`). Each record contains a full conversation
@@ -751,4 +751,4 @@ Training data and LoRA checkpoints remain private.
 4. DPO: Rafailov et al., arXiv:2305.18290
 5. TRL / PEFT: Hugging Face (2024)
 6. McNemar (1947), Wilson (1927), Efron (1979): see `eval_trust/paired_stats.py`
-7. eval_trust: telleroutlook, evomerge-framework (2026)
+7. eval_trust: telleroutlook, trace-pipeline (2026)

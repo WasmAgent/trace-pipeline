@@ -7,7 +7,7 @@
       "schema_version": "compliance-eval-record/v1",
       "sha256": "654c8ed5f92ee12023c3449ba75091ac815373f9f7d6d27a8ae9daca47ec752b",
       "n_records": 1,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -15,7 +15,7 @@
       "schema_version": "compliance-eval-record/v1",
       "sha256": "a80a9bc0face93d7880a02584663825929c5529968497b45fafc17dc1eeaad3b",
       "n_records": 1,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -23,7 +23,7 @@
       "schema_version": "compliance-eval-record/v1",
       "sha256": "20d5d1b5ad3875b5b6a74edc36c2d13782fafcceeba5931307c1a9a75a2aab0f",
       "n_records": 1,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -31,7 +31,7 @@
       "schema_version": "rollout-wire/v1",
       "sha256": "8ad97661c75f3fdea7e53f3c549e8c96afda7aeb848e5e51d70ffed1b69855a5",
       "n_records": 1,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -39,7 +39,7 @@
       "schema_version": "rollout-wire/v1",
       "sha256": "fc23a858fbee0a5d4a396013a37869a7969d0c6cbe3e78cb8fb4f213eea28e3b",
       "n_records": 2,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -47,7 +47,7 @@
       "schema_version": "rollout-wire/v1",
       "sha256": "d16d575594db0f98e617ee06cad2c258b3e87dddf9b5e72bb6f47c3eca8c7485",
       "n_records": 1,
-      "generated_by": "evomerge-framework/scripts",
+      "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
     },
     {
@@ -55,9 +55,9 @@
       "schema_version": "rollout-wire/v1",
       "sha256": "b441599c2c6ce2d8a045f802a98ff407205a94e19a065007c241be18133c8d17",
       "n_records": 2,
-      "generated_by": "evomerge-framework/fixtures",
+      "generated_by": "trace-pipeline/fixtures",
       "generated_at": "2026-06-24",
-      "sync_note": "byte-identical across wasmagent-js, evomerge-framework, bscode"
+      "sync_note": "byte-identical across wasmagent-js, trace-pipeline, bscode"
     }
   ]
 }

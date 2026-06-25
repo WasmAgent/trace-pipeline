@@ -404,6 +404,6 @@
   "title": "ComplianceEvalRecord",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/compliance-eval-record.schema.json",
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/compliance-eval-record.schema.json",
   "description": "Final output of one WasmAgent compliance engine run."
 }

@@ -1,18 +1,18 @@
-# evomerge-framework
+# trace-pipeline
 
-[![CI](https://github.com/telleroutlook/evomerge-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/telleroutlook/evomerge-framework/actions/workflows/ci.yml)
+[![CI](https://github.com/WasmAgent/trace-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/WasmAgent/trace-pipeline/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![Paper PDF](https://img.shields.io/badge/paper-PDF-red.svg)](papers/eval_trust/draft.pdf)
 
 **Measurement trust and trace-to-training backend for WasmAgent.**
 
-> *evomerge-framework is the research backend that tells you whether your evaluation is trustworthy and whether your runtime traces are safe enough to become training data.*
+> *trace-pipeline is the research backend that tells you whether your evaluation is trustworthy and whether your runtime traces are safe enough to become training data.*
 
 This repository is the third layer of the [WasmAgent Trustworthy Agent Training Loop](docs/ecosystem-map.md):
 
 ```
-wasmagent-js  →  bscode  →  evomerge-framework  →  better runtime
+wasmagent-js  →  bscode  →  trace-pipeline  →  better runtime
 (runtime)        (workload)  (measurement + data)    (fed back)
 ```
 
@@ -46,8 +46,8 @@ This toolkit is the audit we wish we had run on day 1.
 ## 30-second demo: reproduce the case-study flip
 
 ```bash
-git clone https://github.com/telleroutlook/evomerge-framework
-cd evomerge-framework
+git clone https://github.com/WasmAgent/trace-pipeline
+cd trace-pipeline
 pip install scipy
 python - <<'PY'
 import json
@@ -222,7 +222,7 @@ Pass `--wasmagent-js /path/to/repo` to check against the canonical JSON Schema f
 ### Shared fixture
 
 `fixtures/data-loop/rollout-branches.v1.jsonl` — 2-branch rollout fixture
-(1 pass / 1 fail). Must be byte-identical across evomerge-framework, wasmagent-js,
+(1 pass / 1 fail). Must be byte-identical across trace-pipeline, wasmagent-js,
 and bscode. Sync all three repos in the same PR when changing.
 
 ### Recipes
@@ -245,7 +245,7 @@ and bscode. Sync all three repos in the same PR when changing.
             A Case Study from a 5-Month Misadventure},
   author = {{telleroutlook}},
   year   = {2026},
-  url    = {https://github.com/telleroutlook/evomerge-framework},
+  url    = {https://github.com/WasmAgent/trace-pipeline},
 }
 ```
 

@@ -130,6 +130,6 @@
   "title": "ConstraintIR",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/constraint-ir.schema.json",
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/constraint-ir.schema.json",
   "description": "A single constraint with level, category, and optional repair policy."
 }

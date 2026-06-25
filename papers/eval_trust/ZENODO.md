@@ -10,7 +10,7 @@ Zenodo (CERN-hosted) gives software releases a permanent DOI without
 requiring a journal. Citations look like:
 
 ```
-telleroutlook (2026). evomerge-framework: v0.1.0.
+telleroutlook (2026). trace-pipeline: v0.1.0.
 Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
 ```
 
@@ -31,7 +31,7 @@ the same GitHub account that owns this repo (`telleroutlook`).
 
 ### 2. Toggle the repository
 
-You'll see a list of your GitHub repos. Find `evomerge-framework` and
+You'll see a list of your GitHub repos. Find `trace-pipeline` and
 toggle the switch to **ON**. Zenodo now watches for new releases.
 
 ### 3. Re-publish the v0.1.0 release
@@ -52,7 +52,7 @@ git tag -a v0.1.0 -m "v0.1.0 — initial public release"
 git push origin v0.1.0
 
 gh release create v0.1.0 \
-    --repo telleroutlook/evomerge-framework \
+    --repo WasmAgent/trace-pipeline \
     --title "v0.1.0 — Initial public release" \
     --notes-file CHANGELOG.md
 ```

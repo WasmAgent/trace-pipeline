@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Schema parity test: verify that real runs.jsonl validates against both
-the wasmagent-js JSON Schema and the evomerge-framework Pydantic model.
+the wasmagent-js JSON Schema and the trace-pipeline Pydantic model.
 
 Run in CI or manually:
     python scripts/check-schema-parity.py \

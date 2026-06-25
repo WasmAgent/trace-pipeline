@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Read the paper first
-    url: https://github.com/telleroutlook/evomerge-framework/blob/main/papers/eval_trust/draft.pdf
+    url: https://github.com/WasmAgent/trace-pipeline/blob/main/papers/eval_trust/draft.pdf
     about: Many questions are answered in the paper directly. Please skim before opening an issue.
   - name: Examples / cookbook
-    url: https://github.com/telleroutlook/evomerge-framework/blob/main/EXAMPLES.md
+    url: https://github.com/WasmAgent/trace-pipeline/blob/main/EXAMPLES.md
     about: 10 copy-pasteable recipes for common audit tasks.

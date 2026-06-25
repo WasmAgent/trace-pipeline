@@ -91,6 +91,6 @@
   "title": "RepairTraceEntry",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/repair-trace-entry.schema.json",
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/repair-trace-entry.schema.json",
   "description": "One round of repair: which violations were targeted and whether they resolved."
 }

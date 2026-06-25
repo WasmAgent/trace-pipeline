@@ -33,7 +33,7 @@
                                 │ sanitized JSONL / objective signals
                                 ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ evomerge-framework                                            │
+│ trace-pipeline                                            │
 │ Measurement Trust + Trace-to-Training Backend                 │
 │ - eval_trust: benchmark audit / paired statistics             │
 │ - evomerge: schema validation / SFT / DPO / router records    │
@@ -56,7 +56,7 @@
 |---|---|---|
 | `wasmagent-js` | Runtime compliance source of truth | Not a generic agent framework |
 | `bscode` | Real workload and evidence collection surface | Not a general-purpose IDE |
-| `evomerge-framework` | Measurement trust + trace-to-training backend | Not a generic ML training platform |
+| `trace-pipeline` | Measurement trust + trace-to-training backend | Not a generic ML training platform |
 
 ---
 
@@ -71,7 +71,7 @@ wasmagent-js
   defines  → Schema SSOT (rollout-wire.schema.json, compliance-eval-record.schema.json)
   ranks    → RolloutRanker (objective_score, rank, total_score)
 
-evomerge-framework
+trace-pipeline
   consumes → ranked rollout JSONL → SFT / DPO / PPO records
   consumes → ComplianceEvalRecord JSONL → compliance SFT / DPO / router records
   validates → schema parity, contamination, provenance
@@ -80,16 +80,16 @@ evomerge-framework
 **Schema SSOT locations:**
 - `wasmagent-js/packages/core/src/ranking/schemas/rollout-wire.schema.json`
 - `wasmagent-js/packages/compliance/schemas/compliance-eval-record.schema.json`
-- `evomerge-framework/schemas/*.schema.json` (Pydantic mirrors, validated in CI)
+- `trace-pipeline/schemas/*.schema.json` (Pydantic mirrors, validated in CI)
 
 ---
 
 ## Shared Fixtures
 
 All three repositories share byte-identical fixture files for smoke tests and CI.
-See `evomerge-framework/fixtures/fixtures.lock.json` for SHA-256 hashes.
+See `trace-pipeline/fixtures/fixtures.lock.json` for SHA-256 hashes.
 
-**Golden fixtures** (`evomerge-framework/fixtures/golden/`):
+**Golden fixtures** (`trace-pipeline/fixtures/golden/`):
 
 | Fixture | Scenario |
 |---|---|
@@ -101,7 +101,7 @@ See `evomerge-framework/fixtures/fixtures.lock.json` for SHA-256 hashes.
 | `compliance-repair-pass.v1.jsonl` | full_pcl mode, repair resolves violation |
 
 **Shared data-loop fixture** (`fixtures/data-loop/rollout-branches.v1.jsonl`):
-Byte-identical across wasmagent-js, evomerge-framework, and bscode.
+Byte-identical across wasmagent-js, trace-pipeline, and bscode.
 
 ---
 
@@ -124,7 +124,7 @@ Byte-identical across wasmagent-js, evomerge-framework, and bscode.
 ## Cross-Repo CI Contract
 
 ```bash
-# Run in evomerge-framework CI:
+# Run in trace-pipeline CI:
 python scripts/check-schema-fields.py        # field coverage vs data-loop contract
 python scripts/export-schemas.py --check     # Pydantic → JSON Schema parity
 python scripts/check-schema-parity.py \      # fixture validates against both schemas
@@ -143,4 +143,4 @@ print('all fixture hashes OK')
 
 ---
 
-*Last updated: 2026-06-25. Maintained in `evomerge-framework/docs/ecosystem-map.md`.*
+*Last updated: 2026-06-25. Maintained in `trace-pipeline/docs/ecosystem-map.md`.*

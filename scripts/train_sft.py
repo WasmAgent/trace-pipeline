@@ -2,7 +2,7 @@
 """QLoRA SFT training script for WasmAgent compliance-conditioned small models.
 
 Trains a QLoRA adapter on top of a base model using SFT training records
-exported by evomerge-framework.
+exported by trace-pipeline.
 
 Hardware notes (Apple Silicon, from CLAUDE.md Phase 17 experience):
   - 1.5B / 1.7B models: use --fp32 (bfloat16 causes NaN on small models)

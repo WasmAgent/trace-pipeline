@@ -255,6 +255,6 @@
   "title": "TaskSpec",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/task-spec.schema.json",
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/task-spec.schema.json",
   "description": "Root contract for a WasmAgent compliance run, including constraints, tool policy, and repair configuration."
 }

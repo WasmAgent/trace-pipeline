@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Sync canonical JSON Schema files from wasmagent-js into evomerge-framework.
+"""Sync canonical JSON Schema files from wasmagent-js into trace-pipeline.
 
 The schema SSOT lives in wasmagent-js. This script copies the canonical
-files into evomerge-framework/schemas/ and reports any field-level drift
+files into trace-pipeline/schemas/ and reports any field-level drift
 between them and the current Pydantic models.
 
 Usage:

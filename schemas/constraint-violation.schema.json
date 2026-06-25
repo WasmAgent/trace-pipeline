@@ -145,6 +145,6 @@
   "title": "ConstraintViolation",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/telleroutlook/evomerge-framework/blob/main/schemas/constraint-violation.schema.json",
+  "$id": "https://github.com/WasmAgent/trace-pipeline/blob/main/schemas/constraint-violation.schema.json",
   "description": "A detected constraint violation with location and stage information."
 }
