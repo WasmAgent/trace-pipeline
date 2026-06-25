@@ -138,5 +138,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial public release. arXiv ID pending endorsement.
 
-[Unreleased]: https://github.com/telleroutlook/evomerge-framework/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/telleroutlook/evomerge-framework/releases/tag/v0.1.0
+[Unreleased]: https://github.com/WasmAgent/trace-pipeline/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/WasmAgent/trace-pipeline/releases/tag/v0.1.0

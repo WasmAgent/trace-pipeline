@@ -1,4 +1,4 @@
-# Makefile — common dev tasks for evomerge-framework
+# Makefile — common dev tasks for trace-pipeline
 #
 # Usage:
 #   make help          # show all targets

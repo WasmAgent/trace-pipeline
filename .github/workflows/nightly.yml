@@ -1,0 +1,40 @@
+name: Nightly cross-repo parity
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  cross-repo-parity:
+    name: Cross-repo schema parity (wasmagent-js main)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Checkout wasmagent-js main (sparse)
+        run: |
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/WasmAgent/wasmagent-js.git /tmp/wasmagent-js
+          cd /tmp/wasmagent-js && git sparse-checkout set \
+            packages/compliance/schemas \
+            packages/core/src/ranking/schemas \
+            packages/compliance/benchmarks/ifeval
+
+      - name: Schema parity check (against wasmagent-js main)
+        run: |
+          python scripts/sync-wasmagent-schemas.py \
+            --wasmagent-js /tmp/wasmagent-js --check
+          python scripts/check-schema-parity.py \
+            --runs-dir /tmp/wasmagent-js/packages/compliance/benchmarks/ifeval \
+            --wasmagent-js /tmp/wasmagent-js
