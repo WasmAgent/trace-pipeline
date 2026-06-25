@@ -1,7 +1,7 @@
 """Tests for evomerge.rl.export — RL transition records."""
 from __future__ import annotations
 
-from evomerge.rl.export import RewardSignal, RlTransition, rollout_to_rl_transitions
+from evomerge.rl.export import RewardSignal, rollout_to_rl_transitions
 from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
 
 

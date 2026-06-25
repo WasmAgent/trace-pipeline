@@ -1,7 +1,7 @@
 """Tests for evomerge.adp.export — rollout-wire/v1 → ADP conversion."""
 from __future__ import annotations
 
-from evomerge.adp.export import AdpRecord, rollout_to_adp
+from evomerge.adp.export import rollout_to_adp
 from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
 
 

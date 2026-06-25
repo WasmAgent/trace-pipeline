@@ -17,7 +17,6 @@ import dataclasses
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from evomerge.io import load_rollouts
 from evomerge.schemas.rollout import RolloutBranchRecord

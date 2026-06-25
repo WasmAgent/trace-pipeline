@@ -96,7 +96,8 @@ def _cmd_rl_export(args: argparse.Namespace) -> int:
 
 def _cmd_compile_context(args: argparse.Namespace) -> int:
     from evomerge.context_compile.compiler import compile_file
-    import dataclasses, json
+    import dataclasses
+    import json
 
     out = args.out or None
     records = compile_file(

@@ -21,7 +21,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
+from evomerge.schemas.rollout import RolloutBranchRecord
 
 
 @dataclass

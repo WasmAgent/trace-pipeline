@@ -20,9 +20,8 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from typing import Any
 
-from evomerge.adp.export import AdpRecord, rollout_to_adp
+from evomerge.adp.export import rollout_to_adp
 from evomerge.capability.taxonomy import (
     CapabilityTag,
     CapabilityTagRecord,

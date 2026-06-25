@@ -1,10 +1,8 @@
 """Tests for evomerge.capability.attribution — capability gap mining."""
 from __future__ import annotations
 
-import pytest
 
 from evomerge.capability.attribution import (
-    CapabilityGap,
     MineResult,
     attribute_rollout,
     mine_capability_gaps,

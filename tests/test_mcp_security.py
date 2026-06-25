@@ -1,8 +1,6 @@
 """Tests for evomerge.security.mcp — McpSecurityEvalRecord schema."""
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
 
 from evomerge.security.mcp import (
     FirewallDecision,
