@@ -23,8 +23,11 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent
-TEMPLATE = REPO_ROOT / "docs" / "dataset-card-template.md"
+# Prefer the library implementation when evomerge is installed
+try:
+    from evomerge.dataset_card import generate_dataset_card as _generate
+except ImportError:
+    _generate = None  # type: ignore[assignment]
 
 
 def _read_manifest(path: Path) -> dict:
@@ -35,54 +38,20 @@ def _read_manifest(path: Path) -> dict:
 
 
 def generate(manifest: dict, name: str, date: str) -> str:
-    template = TEMPLATE.read_text()
-    n_total = (
-        manifest.get("n_sft", 0)
-        + manifest.get("n_dpo", 0)
-        + manifest.get("n_ppo", 0)
-        + manifest.get("n_compliance_sft", 0)
-        + manifest.get("n_compliance_dpo", 0)
-        + manifest.get("n_router", 0)
-    )
+    if _generate is not None:
+        return _generate(manifest, name=name, date=date)
+    # Fallback: inline minimal implementation (no template file required)
+    n_total = sum(manifest.get(k, 0) for k in
+                  ("n_sft", "n_dpo", "n_ppo", "n_compliance_sft", "n_compliance_dpo", "n_router"))
     n_contaminated = manifest.get("n_contaminated", 0)
-    contamination_rate = (
-        f"{n_contaminated / n_total:.1%}" if n_total else "N/A"
+    contamination_rate = f"{n_contaminated / n_total:.1%}" if n_total else "N/A"
+    return (
+        f"# Dataset Card — {name}\n\nGenerated on {date}.\n\n"
+        f"Records: sft={manifest.get('n_sft',0)} dpo={manifest.get('n_dpo',0)} "
+        f"ppo={manifest.get('n_ppo',0)} total={n_total}\n"
+        f"Invalid: {manifest.get('n_invalid',0)}  "
+        f"Contaminated: {n_contaminated} ({contamination_rate})\n"
     )
-
-    replacements = {
-        "{{DATASET_NAME}}": name,
-        "{{VERSION}}": "1.0.0",
-        "{{DATE}}": date,
-        "{{LICENSE}}": "Apache-2.0",
-        "{{N_SFT}}": str(manifest.get("n_sft", 0)),
-        "{{N_DPO}}": str(manifest.get("n_dpo", 0)),
-        "{{N_PPO}}": str(manifest.get("n_ppo", 0)),
-        "{{N_COMPLIANCE_SFT}}": str(manifest.get("n_compliance_sft", 0)),
-        "{{N_COMPLIANCE_DPO}}": str(manifest.get("n_compliance_dpo", 0)),
-        "{{N_ROUTER}}": str(manifest.get("n_router", 0)),
-        "{{N_INVALID}}": str(manifest.get("n_invalid", 0)),
-        "{{N_CONTAMINATED}}": str(n_contaminated),
-        "{{N_TOTAL}}": str(n_total),
-        "{{CONTAMINATION_RATE}}": contamination_rate,
-        "{{CONTAMINATION_THRESHOLD}}": "0.2",
-        "{{TASK_TYPE}}": "instruction-following / code editing",
-        "{{ROLLOUT_MODELS}}": "see rollout metadata",
-        "{{KERNELS}}": "QuickJS WASM",
-        "{{COLLECTION_PERIOD}}": date,
-        "{{EVAL_SET}}": "IFEval-50 (google/IFEval stratified subset)",
-        "{{SEED_1}}": "42", "{{SEED_1_N}}": "—", "{{SEED_1_RATE}}": "—",
-        "{{SEED_2}}": "43", "{{SEED_2_N}}": "—", "{{SEED_2_RATE}}": "—",
-        "{{ROLLOUT_JSONL_PATH}}": "data/rollouts.jsonl",
-        "{{OUT_DIR}}": "data/training/",
-        "{{SEED}}": "42",
-        "{{LIMITATION_1}}": "Small model (≤3B params) rollouts only; larger model behaviour untested",
-        "{{LIMITATION_2}}": "IFEval task distribution — not representative of open-domain tasks",
-    }
-
-    card = template
-    for placeholder, value in replacements.items():
-        card = card.replace(placeholder, value)
-    return card
 
 
 def check(manifest_path: Path) -> int:

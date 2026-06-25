@@ -38,6 +38,7 @@ from evomerge.validate.redaction import (
     BSCODE_REDACTED_FIELDS,
     BSCODE_PATTERNS,
 )
+from evomerge.dataset_card import generate_dataset_card
 
 
 @dataclass
@@ -256,6 +257,13 @@ def run_export(
         json.dumps(redaction_report.to_dict(), indent=2, ensure_ascii=False)
     )
     manifest.files["redaction_report"] = str(redaction_path)
+
+    # --- dataset card (auto-generated; name defaults to out_dir basename) ---
+    dataset_name = Path(out_dir).name or "wasmagent-dataset"
+    card_md = generate_dataset_card(manifest.to_dict(), name=dataset_name)
+    card_path = out / "DATASET_CARD.md"
+    card_path.write_text(card_md)
+    manifest.files["dataset_card"] = str(card_path)
 
     # Rewrite manifest now that contamination_report + schema_report paths are known
     manifest_path.write_text(
