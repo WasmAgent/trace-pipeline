@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (P1 — cross-framework + router bridge)
+
+- **`evomerge/benchmarks/langsmith_trace.py`** — LangSmith/LangGraph trace → AEP import.
+  `LSRun` / `LSTrace` dataclasses. `ls_trace_to_aep()`: `tool` runs → `ActionEvidence`,
+  chain/tool errors → `capability_decisions[deny]`, `llm` runs → `model_id`.
+  Retrievers/embeddings silently skipped. `load_ls_trace_jsonl()` groups by root run.
+  6 tests pass. CLI: `python -m evomerge import-langsmith --input FILE --output FILE`.
+
+- **`evomerge/router/aep_bridge.py`** — AEP → router feature bridge (P1-3).
+  `features_from_aep()` maps AEP actions/decisions/verifiers to `RouterFeatures`.
+  `label_from_aep()` heuristic: 0 fails → `small_model_can_handle`, fails only → `need_repair`,
+  1 deny → `need_large_model`, ≥2 denies → `need_human_review`. 6 tests pass.
+
+- **`schemas/aep-record.schema.json` — `budget_ledger`**. Per-run budget consumption fields
+  mirroring the TypeScript `BudgetLedger` added to `@wasmagent/aep`.
+
 ### Added (Day 61-90)
 
 - **`evomerge/benchmarks/openai_agents_trace.py`** — Cross-framework trace import: OpenAI Agents SDK

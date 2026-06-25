@@ -83,6 +83,52 @@
         }
       }
     },
+    "budget_ledger": {
+      "type": "object",
+      "description": "Per-run budget consumption vs limits",
+      "properties": {
+        "token_budget": {
+          "type": "object",
+          "required": ["spent"],
+          "properties": {
+            "limit": { "type": "number" },
+            "spent": { "type": "number" }
+          }
+        },
+        "latency_budget": {
+          "type": "object",
+          "required": ["actual_ms"],
+          "properties": {
+            "limit_ms": { "type": "number" },
+            "actual_ms": { "type": "number" }
+          }
+        },
+        "tool_budget": {
+          "type": "object",
+          "required": ["spent"],
+          "properties": {
+            "limit": { "type": "number" },
+            "spent": { "type": "number" }
+          }
+        },
+        "risk_budget": {
+          "type": "object",
+          "required": ["spent"],
+          "properties": {
+            "limit": { "type": "number" },
+            "spent": { "type": "number" }
+          }
+        },
+        "retry_budget": {
+          "type": "object",
+          "required": ["spent"],
+          "properties": {
+            "limit": { "type": "number" },
+            "spent": { "type": "number" }
+          }
+        }
+      }
+    },
     "created_at_ms": { "type": "number" }
   }
 }

@@ -14,6 +14,7 @@ Commands:
   import-bfcl         Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
   import-mcp-atlas    Convert MCP-Atlas results JSONL to rollout-wire/v1 or AEP JSONL
   import-oai-agents   Convert OpenAI Agents SDK trace JSONL to AEP JSONL
+  import-langsmith    Convert LangSmith/LangGraph trace JSONL to AEP JSONL
   audit-report        Generate a combined AEP/lint/provenance audit report (Markdown)
 
 Run `python -m evomerge <command> --help` for per-command options.
@@ -488,6 +489,34 @@ def _cmd_import_oai_agents(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# import-langsmith
+# ---------------------------------------------------------------------------
+
+def _cmd_import_langsmith(args: argparse.Namespace) -> int:
+    """Convert LangSmith/LangGraph trace JSONL to AEP JSONL."""
+    from evomerge.benchmarks.langsmith_trace import load_ls_trace_jsonl, ls_trace_to_aep
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    traces = load_ls_trace_jsonl(args.input)
+    records = [ls_trace_to_aep(t) for t in traces]
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # audit-report
 # ---------------------------------------------------------------------------
 
@@ -650,6 +679,14 @@ def _build_parser() -> argparse.ArgumentParser:
     oai_p.add_argument("--output", metavar="FILE", required=True,
                        help="output AEP JSONL path")
 
+    # --- import-langsmith ---
+    ls_p = sub.add_parser("import-langsmith",
+                          help="convert LangSmith/LangGraph trace JSONL to AEP JSONL")
+    ls_p.add_argument("--input", metavar="FILE", required=True,
+                      help="LangSmith runs JSONL (each line: one Run object)")
+    ls_p.add_argument("--output", metavar="FILE", required=True,
+                      help="output AEP JSONL path")
+
     # --- audit-report ---
     ar_p = sub.add_parser("audit-report",
                           help="generate a combined AEP/lint/provenance audit report (Markdown)")
@@ -690,6 +727,7 @@ def main(argv: list[str] | None = None) -> int:
         "import-bfcl": _cmd_import_bfcl,
         "import-mcp-atlas": _cmd_import_mcp_atlas,
         "import-oai-agents": _cmd_import_oai_agents,
+        "import-langsmith": _cmd_import_langsmith,
         "audit-report": _cmd_audit_report,
     }
     return dispatch[args.command](args)
