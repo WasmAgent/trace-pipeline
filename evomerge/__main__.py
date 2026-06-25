@@ -2,6 +2,7 @@
 
 Commands:
   export      Convert rollout / compliance traces to training JSONL
+  adp-export  Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
   router      Predict routing labels for a batch of router records
   synthesize  Generate synthetic SFT/DPO samples via a teacher model
   validate    Run contamination and schema checks on training JSONL
@@ -45,6 +46,25 @@ def _cmd_export(args: argparse.Namespace) -> int:
         only_passing_sft=not args.include_failing,
     )
     print(json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# adp-export
+# ---------------------------------------------------------------------------
+
+def _cmd_adp_export(args: argparse.Namespace) -> int:
+    from evomerge.adp.export import rollout_file_to_adp
+    import dataclasses
+
+    out = args.out or None
+    steps = rollout_file_to_adp(args.rollout, out=out)
+    if out is None:
+        import json
+        for step in steps:
+            print(json.dumps(dataclasses.asdict(step), ensure_ascii=False))
+    else:
+        print(f"[ok] wrote {len(steps)} ADP steps to {out}")
     return 0
 
 
@@ -292,6 +312,13 @@ def _build_parser() -> argparse.ArgumentParser:
     vp.add_argument("--strict", action="store_true",
                     help="exit 1 if any invalid records found")
 
+    # --- adp-export ---
+    adp = sub.add_parser("adp-export", help="convert rollout-wire/v1 to ADP JSONL")
+    adp.add_argument("--rollout", metavar="FILE", required=True,
+                     help="rollout-wire/v1 JSONL input")
+    adp.add_argument("--out", metavar="FILE",
+                     help="output JSONL path (default: stdout)")
+
     return p
 
 
@@ -305,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
 
     dispatch = {
         "export": _cmd_export,
+        "adp-export": _cmd_adp_export,
         "router": _cmd_router,
         "synthesize": _cmd_synthesize,
         "validate": _cmd_validate,
