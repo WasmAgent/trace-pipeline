@@ -473,3 +473,39 @@ print(Counter(labels))
 
 See also: [`examples/recipe16_full_loop_demo.py`](examples/recipe16_full_loop_demo.py)
 
+---
+
+## Recipe 17 — AEP evidence pipeline end-to-end demo
+
+**File:** [`examples/recipe17_aep_trust_demo.py`](examples/recipe17_aep_trust_demo.py)
+
+Demonstrates the complete WasmAgent evidence pipeline in 8 steps with no model, no API key, no external downloads:
+
+1. Build synthetic AEP record (`aep/v0.1`)
+2. Validate with `validate_aep_record()` — checks schema + evidence completeness
+3. Compute `AgentTrustScore` (9-dim geometric mean: task_success, evidence_completeness, policy_compliance, budget_compliance, verifier_agreement, benchmark_trust, supply_chain_integrity, replay_determinism, contamination_resistance)
+4. Classify benchmark exploit surfaces (`eval_trust.exploit_surface`)
+5. Generate Markdown audit report (`generate_audit_report()`)
+6. Build `RunReceipt` (SCITT-style provenance)
+7. Register artifacts in `Registry` (aep_schema + verifier + receipt)
+8. Print summary: trust_score=0.977 (grade A), 3 registry entries
+
+```bash
+python examples/recipe17_aep_trust_demo.py
+```
+
+Expected output:
+
+```
+Step 8: Summary
+============================================================
+  AEP validation   : PASS
+  Trust score      : 0.977 (grade A)
+  Exploit surfaces : 1 detected / 6 total
+  Audit report     : 24 lines generated
+  Run receipt      : <digest>...
+  Registry entries : 3 registered
+
+All steps completed successfully.
+```
+

@@ -88,18 +88,19 @@ That's the entire case study, on real data, in one screenful.
 
 ## What's in the toolkit
 
-📖 **[EXAMPLES.md](EXAMPLES.md)** — 16 copy-pasteable recipes (10 eval_trust + 6 evomerge pipeline).
-🐍 **[`examples/`](examples/)** — same 16 as standalone runnable .py.
+📖 **[EXAMPLES.md](EXAMPLES.md)** — 17 copy-pasteable recipes (10 eval_trust + 7 evomerge pipeline, including recipe17 AEP end-to-end demo).
+🐍 **[`examples/`](examples/)** — same 17 as standalone runnable .py.
 🛠️ **[`Makefile`](Makefile)** — dev shortcuts (`make help`).
 🧪 **[`benchmarks/`](benchmarks/)** — synthetic ground-truth self-test.
 📄 **[`papers/eval_trust/`](papers/eval_trust/)** — paper PDF + LaTeX + figures + scripts.
 📄 **[`papers/compliance_model/`](papers/compliance_model/)** — compliance training report + schema novelty analysis.
 
 ```
-eval_trust/   paired_stats / conformal_ci / lm_eval_bridge / t0v2/
-evomerge/     schemas / pipeline / adp / rl / capability / context_compile / security / export
+eval_trust/   paired_stats / conformal_ci / lm_eval_bridge / t0v2 / exploit_surface
+evomerge/     schemas / pipeline / adp / rl / capability / context_compile / security /
+              validate / benchmarks / router / trust_score / registry / audit_report / provenance
 data/         case-study logs + synthetic + quantization summary
-tests/        379 tests (53 eval_trust + 326 evomerge pipeline)
+tests/        441 tests (53 eval_trust + 388 evomerge pipeline)
 ```
 
 **eval_trust**: Pure Python + NumPy + (optional) SciPy. No GPU. No model inference.
@@ -192,6 +193,25 @@ evomerge/
 | `python -m evomerge validate` | schema + contamination check on any training JSONL |
 | `python -m evomerge router` | batch routing predictions with rule classifier |
 | `python -m evomerge synthesize` | generate synthetic samples via teacher model |
+| `python -m evomerge validate-aep` | validate AEP (Agent Evidence Protocol) records |
+| `python -m evomerge lint-benchmark` | anti-reward-hacking exploit surface check on task directory |
+| `python -m evomerge trust-score` | compute AgentTrustScore (9-dim geometric mean) |
+| `python -m evomerge audit-report` | generate full Markdown benchmark audit report |
+| `python -m evomerge receipt` | produce SCITT-style run provenance receipt |
+| `python -m evomerge registry-register` | register artifact in Evidence Registry |
+| `python -m evomerge registry-list` | list Evidence Registry entries by type |
+| `python -m evomerge import-bfcl` | BFCL v4 JSONL → rollout-wire JSONL |
+| `python -m evomerge import-mcp-atlas` | MCP-Atlas JSONL → rollout/AEP |
+| `python -m evomerge import-oai-agents` | OpenAI Agents SDK trace → AEP JSONL |
+| `python -m evomerge import-langsmith` | LangSmith/LangGraph trace → AEP JSONL |
+| `python -m evomerge import-ms-agent-framework` | Microsoft Agent Framework trace → AEP JSONL |
+| `python -m evomerge import-adk` | Google ADK trace → AEP JSONL |
+| `python -m evomerge import-a2a-task` | A2A task → AEP JSONL |
+| `python -m evomerge import-terminal-bench` | Terminal-Bench → rollout/AEP JSONL |
+| `python -m evomerge import-tau-bench` | τ³-bench → rollout/AEP JSONL |
+| `python -m evomerge import-tool-sandbox` | ToolSandbox → AEP JSONL |
+| `python -m evomerge import-agent-harm` | AgentHarm/OS-Harm/CUAHarm → AEP JSONL |
+| `python -m evomerge import-otel` | OTel spans JSONL → AEP JSONL |
 
 ### New modules (since v0.2)
 
@@ -204,6 +224,16 @@ evomerge/
 | Trace-to-context | `evomerge/context_compile/compiler.py` | long-context QA + router/critic records |
 | MCP security eval | `evomerge/security/mcp.py` | McpSecurityEvalRecord schema for firewall events |
 | Dataset card | `scripts/generate-dataset-card.py` | auto-generate DATASET_CARD.md from manifest.json |
+| AEP validation | `evomerge/validate/aep.py` | validate AEP records + evidence completeness |
+| Benchmark linter | `evomerge/security/benchmark_linter.py` | 6-check exploit surface scanner |
+| Run provenance | `evomerge/provenance.py` | SCITT-style RunReceipt + RunReceiptBuilder |
+| Evidence Registry | `evomerge/registry.py` | signed-JSON artifact registry (8 entry types) |
+| Agent Trust Score | `evomerge/trust_score.py` | 9-dim geometric mean trustworthiness score |
+| Audit report | `evomerge/audit_report.py` | AEP + linter + provenance → Markdown report |
+| AEP→router bridge | `evomerge/router/aep_bridge.py` | features_from_aep() + label_from_aep() |
+| Trace Card | `evomerge/dataset_card.py` | TraceCard + generate_trace_card() |
+| Exploit taxonomy | `eval_trust/exploit_surface.py` | 6-surface agent benchmark exploit taxonomy |
+| Benchmark adapters | `evomerge/benchmarks/` | BFCL v4, MCP-Atlas, Terminal-Bench, τ-bench, ToolSandbox, AgentHarm, OAI, LangSmith, MS-AF, ADK, A2A |
 
 ### Schema contract
 
