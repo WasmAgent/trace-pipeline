@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (Day 61-90)
+
+- **`evomerge/benchmarks/openai_agents_trace.py`** — Cross-framework trace import: OpenAI Agents SDK
+  spans → AEP record (`aep/v0.1`). `OAISpan` / `OAITrace` dataclasses; `oai_trace_to_aep()` maps
+  `tool.call` → `ActionEvidence`, `guardrail` → `VerifierResult`, tool errors → `capability_decisions`.
+  `load_oai_trace_jsonl()` groups spans by trace_id. 6 tests pass.
+  CLI: `python -m evomerge import-oai-agents --input FILE --output FILE`.
+
+- **`evomerge/audit_report.py`** — Benchmark audit report generator. `generate_audit_report()` combines
+  AEP validation, benchmark trust scores, and run provenance receipts into a Markdown report.
+  `AuditReportConfig` accepts `aep_files`, `task_dirs`, `receipt_paths`. 4 tests pass.
+  CLI: `python -m evomerge audit-report --title STR [--aep F]+ [--task-dir D]+ [--receipt F]+ [--output PATH]`.
+
 ### Added (Day 31-60)
 
 - **`evomerge/benchmarks/bfcl.py`** — BFCL v4 adapter. `BFCLTask` / `BFCLFunction` / `BFCLResult` /

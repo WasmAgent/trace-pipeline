@@ -1,18 +1,20 @@
 """evomerge CLI — python -m evomerge <command> [options]
 
 Commands:
-  export          Convert rollout / compliance traces to training JSONL
-  adp-export      Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
-  rl-export       Convert rollout-wire/v1 to RL transition records JSONL
-  compile-context Convert rollout traces to long-context QA or router/critic records
-  router          Predict routing labels for a batch of router records
-  synthesize      Generate synthetic SFT/DPO samples via a teacher model
-  validate        Run contamination and schema checks on training JSONL
-  validate-aep    Validate AEP (Agent Evidence Protocol) records
-  lint-benchmark  Check a benchmark task dir for anti-reward-hacking exploit surfaces
-  receipt         Produce a run provenance receipt (RunReceipt JSON)
-  import-bfcl     Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
-  import-mcp-atlas Convert MCP-Atlas results JSONL to rollout-wire/v1 or AEP JSONL
+  export              Convert rollout / compliance traces to training JSONL
+  adp-export          Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
+  rl-export           Convert rollout-wire/v1 to RL transition records JSONL
+  compile-context     Convert rollout traces to long-context QA or router/critic records
+  router              Predict routing labels for a batch of router records
+  synthesize          Generate synthetic SFT/DPO samples via a teacher model
+  validate            Run contamination and schema checks on training JSONL
+  validate-aep        Validate AEP (Agent Evidence Protocol) records
+  lint-benchmark      Check a benchmark task dir for anti-reward-hacking exploit surfaces
+  receipt             Produce a run provenance receipt (RunReceipt JSON)
+  import-bfcl         Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
+  import-mcp-atlas    Convert MCP-Atlas results JSONL to rollout-wire/v1 or AEP JSONL
+  import-oai-agents   Convert OpenAI Agents SDK trace JSONL to AEP JSONL
+  audit-report        Generate a combined AEP/lint/provenance audit report (Markdown)
 
 Run `python -m evomerge <command> --help` for per-command options.
 """
@@ -458,6 +460,60 @@ def _cmd_receipt(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# import-oai-agents
+# ---------------------------------------------------------------------------
+
+def _cmd_import_oai_agents(args: argparse.Namespace) -> int:
+    """Convert OpenAI Agents SDK trace JSONL to AEP JSONL."""
+    from evomerge.benchmarks.openai_agents_trace import load_oai_trace_jsonl, oai_trace_to_aep
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    if not args.output:
+        print("[error] --output is required", file=sys.stderr)
+        return 1
+
+    traces = load_oai_trace_jsonl(args.input)
+    records = [oai_trace_to_aep(t) for t in traces]
+
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        for record in records:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"[ok] wrote {len(records)} AEP records to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# audit-report
+# ---------------------------------------------------------------------------
+
+def _cmd_audit_report(args: argparse.Namespace) -> int:
+    """Generate a combined AEP/lint/provenance audit report (Markdown)."""
+    from evomerge.audit_report import AuditReportConfig, generate_audit_report
+
+    config = AuditReportConfig(
+        title=args.title,
+        aep_files=args.aep or [],
+        task_dirs=args.task_dirs or [],
+        receipt_paths=args.receipts or [],
+    )
+    report = generate_audit_report(config)
+
+    if args.output and args.output != "-":
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report, encoding="utf-8")
+        print(f"[ok] wrote audit report to {out_path}")
+    else:
+        print(report)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # argument parser
 # ---------------------------------------------------------------------------
 
@@ -586,6 +642,29 @@ def _build_parser() -> argparse.ArgumentParser:
     rcp.add_argument("--save", metavar="PATH",
                      help="save receipt to this path instead of printing to stdout")
 
+    # --- import-oai-agents ---
+    oai_p = sub.add_parser("import-oai-agents",
+                           help="convert OpenAI Agents SDK trace JSONL to AEP JSONL")
+    oai_p.add_argument("--input", metavar="FILE", required=True,
+                       help="OAI Agents spans JSONL (each line: one span)")
+    oai_p.add_argument("--output", metavar="FILE", required=True,
+                       help="output AEP JSONL path")
+
+    # --- audit-report ---
+    ar_p = sub.add_parser("audit-report",
+                          help="generate a combined AEP/lint/provenance audit report (Markdown)")
+    ar_p.add_argument("--title", metavar="STRING",
+                      default="WasmAgent Benchmark Audit",
+                      help="report title (default: 'WasmAgent Benchmark Audit')")
+    ar_p.add_argument("--aep", metavar="FILE", action="append", dest="aep",
+                      help="AEP records JSONL file (repeatable)")
+    ar_p.add_argument("--task-dir", metavar="DIR", action="append", dest="task_dirs",
+                      help="benchmark task directory to lint (repeatable)")
+    ar_p.add_argument("--receipt", metavar="FILE", action="append", dest="receipts",
+                      help="run receipt JSON path (repeatable)")
+    ar_p.add_argument("--output", metavar="PATH", default="-",
+                      help="output Markdown path (default: stdout)")
+
     return p
 
 
@@ -610,6 +689,8 @@ def main(argv: list[str] | None = None) -> int:
         "receipt": _cmd_receipt,
         "import-bfcl": _cmd_import_bfcl,
         "import-mcp-atlas": _cmd_import_mcp_atlas,
+        "import-oai-agents": _cmd_import_oai_agents,
+        "audit-report": _cmd_audit_report,
     }
     return dispatch[args.command](args)
 
