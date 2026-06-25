@@ -50,6 +50,36 @@ This toolkit is the audit we wish we had run on day 1.
 
 ---
 
+## Two entry points
+
+```bash
+# 1. Audit any benchmark claim
+python -m eval_trust paired-mcnemar --a results_a.json --b results_b.json
+python -m eval_trust contamination  --train train.jsonl --test test.jsonl
+
+# 2. Convert trusted agent traces into training data
+python -m evomerge export \
+  --rollout fixtures/data-loop/rollout-branches.v1.jsonl \
+  --out-dir /tmp/demo
+```
+
+See **[EXAMPLES.md](EXAMPLES.md)** for 17 copy-pasteable recipes covering both entry points end-to-end.
+
+**Public smoke dataset** — run the full pipeline with zero setup:
+
+```bash
+# Validate + audit the bundled synthetic smoke traces
+python3 -m evomerge validate-aep --input data/smoke/aep-smoke.jsonl
+python3 -m evomerge audit-report --aep data/smoke/aep-smoke.jsonl --output AUDIT_REPORT.md
+
+# Export to SFT training format
+python3 -m evomerge export --input data/smoke/aep-smoke.jsonl --format sft --output sft.jsonl
+```
+
+Dataset card: [`data/smoke/DATASET_CARD.md`](data/smoke/DATASET_CARD.md)
+
+---
+
 ## 30-second demo: reproduce the case-study flip
 
 ```bash
@@ -271,6 +301,19 @@ and bscode. Sync all three repos in the same PR when changing.
 | `examples/recipe13_compliance_sft.py` | ComplianceEvalRecord → answerer + repairer |
 | `examples/recipe14_eval_harness.py` | A/B/C/D/E comparison harness |
 | `examples/recipe15_significance.py` | McNemar + bootstrap: C > A at p < 0.05 |
+
+---
+
+## Public smoke dataset
+
+`data/smoke/` contains a small public sample for integration testing and demos:
+
+| File | Contents |
+|---|---|
+| [`data/smoke/rollout-smoke.jsonl`](data/smoke/rollout-smoke.jsonl) | Minimal rollout-wire records (pass + fail branches) |
+| [`data/smoke/aep-smoke.jsonl`](data/smoke/aep-smoke.jsonl) | Corresponding AEP evidence records |
+
+See [`data/smoke/DATASET_CARD.md`](data/smoke/DATASET_CARD.md) for provenance, schema version, and license.
 
 ---
 

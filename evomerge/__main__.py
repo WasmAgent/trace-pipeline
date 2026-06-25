@@ -858,6 +858,7 @@ def _cmd_import_a2a_task(args: argparse.Namespace) -> int:
 def _cmd_audit_report(args: argparse.Namespace) -> int:
     """Generate a combined AEP/lint/provenance audit report (Markdown)."""
     from evomerge.audit_report import AuditReportConfig, generate_audit_report
+    from evomerge.validate.aep import validate_aep_file
 
     config = AuditReportConfig(
         title=args.title,
@@ -874,6 +875,23 @@ def _cmd_audit_report(args: argparse.Namespace) -> int:
         print(f"[ok] wrote audit report to {out_path}")
     else:
         print(report)
+
+    # --fail-under: exit 1 if overall AEP pass rate is below threshold
+    if args.fail_under > 0.0 and args.aep:
+        total_pass = total = 0
+        for fpath in args.aep:
+            p = Path(fpath)
+            if p.exists():
+                results = validate_aep_file(p)
+                total_pass += sum(1 for r in results if r.passed)
+                total += len(results)
+        pass_rate = (total_pass / total) if total else 1.0
+        if pass_rate < args.fail_under:
+            print(
+                f"[fail] AEP pass rate {pass_rate:.1%} < --fail-under {args.fail_under:.1%}",
+                flush=True,
+            )
+            return 1
     return 0
 
 
@@ -1174,6 +1192,8 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="run receipt JSON path (repeatable)")
     ar_p.add_argument("--output", metavar="PATH", default="-",
                       help="output Markdown path (default: stdout)")
+    ar_p.add_argument("--fail-under", type=float, default=0.0, metavar="F",
+                      help="exit 1 if AEP pass rate < F (0.0 = never fail, default)")
 
     # --- trust-score ---
     ts_p = sub.add_parser("trust-score",

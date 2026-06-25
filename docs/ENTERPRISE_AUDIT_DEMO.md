@@ -27,6 +27,37 @@ python3 -m evomerge --help
 
 ---
 
+## Quick start with smoke dataset (zero setup)
+
+Run the full audit pipeline against the bundled synthetic smoke dataset:
+
+```bash
+# 1. Validate AEP records
+python3 -m evomerge validate-aep --input data/smoke/aep-smoke.jsonl
+
+# 2. Generate audit report
+python3 -m evomerge audit-report \
+  --aep data/smoke/aep-smoke.jsonl \
+  --title "Smoke Audit" \
+  --output AUDIT_REPORT.md
+
+# 3. CI gate: fail if pass rate < 90%
+python3 -m evomerge audit-report \
+  --aep data/smoke/aep-smoke.jsonl \
+  --fail-under 0.9 \
+  --output AUDIT_REPORT.md && echo "Gate passed"
+
+# 4. Export to SFT training format
+python3 -m evomerge export \
+  --input data/smoke/aep-smoke.jsonl \
+  --format sft \
+  --output sft-smoke.jsonl
+```
+
+See [`data/smoke/DATASET_CARD.md`](../data/smoke/DATASET_CARD.md) for dataset details.
+
+---
+
 ## The five-command chain
 
 ```text
@@ -164,12 +195,36 @@ seq  registered_at              label                          artifact
 
 ## Step 5 — audit-report
 
-The audit report combines schema validation, provenance, and any AEP or lint
+The audit report combines AEP record validation, provenance, and any lint
 findings into a single Markdown document.
+
+**One-command usage** (AEP smoke file only, no prior steps needed):
+
+```bash
+python3 -m evomerge audit-report \
+  --aep    data/smoke/aep-smoke.jsonl \
+  --output AUDIT_REPORT.md
+```
+
+**As a CI gate** — exit 1 if AEP pass rate drops below 90%:
+
+```bash
+python3 -m evomerge audit-report \
+  --aep        data/smoke/aep-smoke.jsonl \
+  --fail-under 0.9 \
+  --output     AUDIT_REPORT.md
+```
+
+`--fail-under FLOAT` (default: `0.0` = never fail) makes the command exit
+with code 1 when the overall AEP pass rate is below the given threshold,
+making it suitable as a CI quality gate.
+
+**Full audit chain** (with receipt from Step 3):
 
 ```bash
 python3 -m evomerge audit-report \
   --title   "Enterprise Audit Demo — $(date +%Y-%m-%d)" \
+  --aep     data/smoke/aep-smoke.jsonl \
   --receipt /tmp/audit-demo/run-receipt.json \
   --output  /tmp/audit-demo/AUDIT_REPORT.md
 
@@ -215,9 +270,11 @@ python3 -m evomerge registry-register \
 
 echo "=== Step 6: audit report ==="
 python3 -m evomerge audit-report \
-  --title "Enterprise Audit Demo" \
-  --receipt "$OUT/run-receipt.json" \
-  --output "$OUT/AUDIT_REPORT.md"
+  --title      "Enterprise Audit Demo" \
+  --aep        data/smoke/aep-smoke.jsonl \
+  --receipt    "$OUT/run-receipt.json" \
+  --fail-under 0.9 \
+  --output     "$OUT/AUDIT_REPORT.md"
 
 echo ""
 echo "Artifacts in $OUT:"
