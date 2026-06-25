@@ -1,12 +1,13 @@
 """evomerge CLI — python -m evomerge <command> [options]
 
 Commands:
-  export      Convert rollout / compliance traces to training JSONL
-  adp-export  Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
-  rl-export   Convert rollout-wire/v1 to RL transition records JSONL
-  router      Predict routing labels for a batch of router records
-  synthesize  Generate synthetic SFT/DPO samples via a teacher model
-  validate    Run contamination and schema checks on training JSONL
+  export          Convert rollout / compliance traces to training JSONL
+  adp-export      Convert rollout-wire/v1 to ADP (Agent Data Protocol) JSONL
+  rl-export       Convert rollout-wire/v1 to RL transition records JSONL
+  compile-context Convert rollout traces to long-context QA or router/critic records
+  router          Predict routing labels for a batch of router records
+  synthesize      Generate synthetic SFT/DPO samples via a teacher model
+  validate        Run contamination and schema checks on training JSONL
 
 Run `python -m evomerge <command> --help` for per-command options.
 """
@@ -86,6 +87,29 @@ def _cmd_rl_export(args: argparse.Namespace) -> int:
             print(json.dumps(dataclasses.asdict(t), ensure_ascii=False))
     else:
         print(f"[ok] wrote {len(transitions)} RL transitions to {out}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# compile-context
+# ---------------------------------------------------------------------------
+
+def _cmd_compile_context(args: argparse.Namespace) -> int:
+    from evomerge.context_compile.compiler import compile_file
+    import dataclasses, json
+
+    out = args.out or None
+    records = compile_file(
+        args.rollout,
+        mode=args.mode,
+        min_tool_calls=args.min_tool_calls,
+        out=out,
+    )
+    if out is None:
+        for r in records:
+            print(json.dumps(dataclasses.asdict(r), ensure_ascii=False))
+    else:
+        print(f"[ok] wrote {len(records)} {args.mode} records to {out}")
     return 0
 
 
@@ -349,6 +373,19 @@ def _build_parser() -> argparse.ArgumentParser:
     rl.add_argument("--out", metavar="FILE",
                     help="output JSONL path (default: stdout)")
 
+    # --- compile-context ---
+    cc = sub.add_parser("compile-context",
+                        help="compile rollout traces to long-context QA or router/critic records")
+    cc.add_argument("--rollout", metavar="FILE", required=True,
+                    help="rollout-wire/v1 JSONL input")
+    cc.add_argument("--mode", choices=["long_context_qa", "router_critic"],
+                    default="long_context_qa",
+                    help="output format (default: long_context_qa)")
+    cc.add_argument("--min-tool-calls", type=int, default=1, metavar="N",
+                    help="skip traces with fewer than N tool calls (default: 1)")
+    cc.add_argument("--out", metavar="FILE",
+                    help="output JSONL path (default: stdout)")
+
     return p
 
 
@@ -364,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
         "export": _cmd_export,
         "adp-export": _cmd_adp_export,
         "rl-export": _cmd_rl_export,
+        "compile-context": _cmd_compile_context,
         "router": _cmd_router,
         "synthesize": _cmd_synthesize,
         "validate": _cmd_validate,
