@@ -1065,3 +1065,88 @@ updating before final submission.
   abstract.
 
 ---
+
+---
+
+# Appendix D: Agent Benchmark Exploit Surface Taxonomy (Extension)
+
+> This appendix extends the eval_trust toolkit from static LLM benchmark auditing
+> to *agentic* benchmark auditing. It is based on empirical findings from the
+> WasmAgent benchmark linter (`evomerge/security/benchmark_linter.py`) applied
+> to 22 bscode private task manifests, and cross-referenced with MCP-Atlas,
+> AgentDojo, Terminal-Bench, and the benchmark exploitation survey [@benchmark-exploitation-2026].
+
+## D.1 Motivation
+
+Static LLM benchmarks (GSM8K, MMLU, IFEval) have well-understood failure modes:
+answer contamination in pre-training data, prompt template sensitivity, and
+measurement primitives (the subject of this paper's main body). *Agentic*
+benchmarks — where the model operates tools, reads files, and modifies state —
+introduce a qualitatively different threat surface: the agent can actively
+*exploit* the evaluation environment rather than merely benefiting from passive
+contamination.
+
+We identify six exploit surfaces (Table D.1) and provide automated detection
+heuristics for each, bundled in the `eval_trust.exploit_surface` module.
+
+## D.2 Surface Taxonomy
+
+**Table D.1 — Agent benchmark exploit surface taxonomy.**
+
+| Surface | Name | Severity | Mechanism |
+|---|---|---|---|
+| S1 | Gold Answer Exposure | Critical | Agent reads answer file before solving |
+| S2 | Test Script Mutation | High | Agent overwrites test scripts to force pass |
+| S3 | Environment Variable Leakage | High | Answer embedded in env vars or .env |
+| S4 | Grader Replacement | Critical | Agent replaces grader to always return pass |
+| S5 | Git History Leakage | High | Agent reads solution via `git log` |
+| S6 | Network Policy Absence | Info | No isolation declaration; network retrieval possible |
+
+## D.3 Detection and Empirical Results
+
+We applied the benchmark linter to the 22 bscode private tasks (5 categories:
+build repair, API correctness, security/policy, Cloudflare-specific,
+multi-step long-horizon). Results:
+
+- **0/22** tasks exposed S1 (gold answer files) — tasks use hidden spec fields
+  outside the agent-readable directory
+- **0/22** exposed S4 (writable graders) — test execution is isolated
+- **22/22** flagged S6 (no task.json network declaration) — mitigation: add
+  `"network_isolation": true` to all task manifests (low effort, high signal)
+- **0/22** exposed S2, S3, or S5
+
+This gives the bscode private task set a **BenchmarkTrustScore ≥ 0.80** after
+the S6 manifest gap is resolved, compared to public benchmarks where S1, S4,
+and S5 are frequently observed [@benchmark-exploitation-2026].
+
+## D.4 Integration with AEP Evidence
+
+When an agent run produces an AEP record, the runtime budget, capability
+decisions, and verifier results provide complementary evidence:
+
+- Capability decisions with `decision=deny` on `tool:write_file` or
+  `tool:git_commit` indicate the runtime policy prevented S2/S4 attempts.
+- Tool invocations on `.git` or answer-pattern files appear in `actions[]`
+  with `state_changing=False` (reads) and can be flagged post-hoc.
+- The `AgentTrustScore.policy_compliance` dimension captures this signal
+  automatically when AEP records are passed to `compute_trust_score()`.
+
+## D.5 Benchmark Evidence Manifest Standard
+
+We propose a minimal **Benchmark Evidence Manifest** (`benchmark-manifest/v0.1`)
+that any agent benchmark should ship alongside its task definitions:
+
+```yaml
+benchmark_id: string
+task_count: int
+network_isolation: bool
+answer_storage: "external" | "in-task" | "none"
+grader_hash: sha256
+test_script_hashes: list[sha256]
+exploit_surfaces_checked: list[S1..S6]
+trust_score: float  # from eval_trust BenchmarkTrustScore
+```
+
+This manifest, verified by the eval_trust benchmark linter, produces a
+machine-readable trust certificate that reviewers and downstream consumers
+can verify without re-running the full evaluation.

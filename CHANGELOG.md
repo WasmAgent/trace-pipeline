@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (P2-3 + P2-4)
+
+- **`eval_trust/exploit_surface.py`** (P2-3) — Agent benchmark exploit surface taxonomy.
+  6 surfaces (S1–S6): Gold Answer Exposure / Test Script Mutation / Env Variable Leakage /
+  Grader Replacement / Git History Leakage / Network Policy Absence. `classify_findings()`
+  maps benchmark_linter results to taxonomy entries. `taxonomy_summary()` renders Markdown table.
+  7 tests pass.
+
+- **`papers/eval_trust/draft.md` — Appendix D** (P2-3) — Agent Benchmark Exploit Surface
+  Taxonomy extension (+85 lines). Sections D.1–D.5: motivation, taxonomy table, empirical
+  results on 22 bscode tasks, AEP integration, Benchmark Evidence Manifest standard proposal.
+
+- **`examples/recipe17_aep_trust_demo.py`** (P2-4) — Reproducible end-to-end demo (8 steps,
+  no model/API key). Synthetic AEP record → validate → AgentTrustScore (0.977, grade A) →
+  exploit surface classification → audit report → RunReceipt → Evidence Registry (3 entries).
+  Exits 0, fully self-contained.
+
 ### Added (P2 — Trust Score + Evidence Registry)
 
 - **`evomerge/trust_score.py`** — Agent Trust Score (P2-1). `AgentTrustScore` 综合评分（geometric
