@@ -21,7 +21,6 @@ It has two modules:
 1. **`eval_trust`** — benchmark audit: paired statistics, contamination checks, T0v2 triage.
    Companion to *"Silent Contamination in LLM Merging Evaluation"* ([paper](papers/eval_trust/draft.pdf)).
 2. **`evomerge`** — trace-to-training pipeline: `ComplianceEvalRecord` → SFT / DPO / router records.
-```
 
 ---
 
