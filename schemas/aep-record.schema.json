@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "aep-record/v0.1",
+  "title": "AEPRecord",
+  "description": "Agent Evidence Protocol record — runtime action evidence and run provenance",
+  "type": "object",
+  "required": ["schema_version", "run_id", "created_at_ms"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "aep/v0.1" },
+    "run_id": { "type": "string" },
+    "trace_id": { "type": "string" },
+    "parent_trace_id": { "type": ["string", "null"] },
+    "repo_commit": { "type": "string" },
+    "runtime_version": { "type": "string" },
+    "model_provider": { "type": "string" },
+    "model_id": { "type": "string" },
+    "policy_bundle_digest": { "type": "string" },
+    "tool_manifest_digest": { "type": "string" },
+    "input_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["uri"],
+        "properties": {
+          "uri": { "type": "string" },
+          "digest": { "type": "string" },
+          "taint_labels": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "output_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["uri"],
+        "properties": {
+          "uri": { "type": "string" },
+          "digest": { "type": "string" },
+          "redaction_profile": { "type": "string" }
+        }
+      }
+    },
+    "capability_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability", "subject", "resource", "decision"],
+        "properties": {
+          "capability": { "type": "string" },
+          "subject": { "type": "string" },
+          "resource": { "type": "string" },
+          "decision": { "type": "string", "enum": ["allow", "deny", "ask_user", "dry_run"] },
+          "reason_code": { "type": "string" }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action_id", "tool_name", "state_changing", "timestamp_ms"],
+        "properties": {
+          "action_id": { "type": "string" },
+          "tool_name": { "type": "string" },
+          "state_changing": { "type": "boolean" },
+          "precondition_digest": { "type": "string" },
+          "result_digest": { "type": "string" },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "timestamp_ms": { "type": "number" }
+        }
+      }
+    },
+    "verifier_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["verifier_id", "passed"],
+        "properties": {
+          "verifier_id": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "score": { "type": "number" },
+          "claim_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "created_at_ms": { "type": "number" }
+  }
+}

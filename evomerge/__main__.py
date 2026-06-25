@@ -8,6 +8,8 @@ Commands:
   router          Predict routing labels for a batch of router records
   synthesize      Generate synthetic SFT/DPO samples via a teacher model
   validate        Run contamination and schema checks on training JSONL
+  validate-aep    Validate AEP (Agent Evidence Protocol) records
+  lint-benchmark  Check a benchmark task dir for anti-reward-hacking exploit surfaces
 
 Run `python -m evomerge <command> --help` for per-command options.
 """
@@ -318,6 +320,47 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# validate-aep
+# ---------------------------------------------------------------------------
+
+def _cmd_validate_aep(args: argparse.Namespace) -> int:
+    from evomerge.validate.aep import validate_aep_file, print_aep_report
+    from pathlib import Path
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+
+    path = Path(args.input)
+    if not path.exists():
+        print(f"[error] file not found: {path}", file=sys.stderr)
+        return 1
+
+    results = validate_aep_file(path)
+    print_aep_report(results)
+
+    if not results:
+        return 0
+
+    passed = sum(1 for r in results if r.passed)
+    pass_rate = passed / len(results)
+    return 0 if pass_rate >= args.fail_under else 1
+
+
+# ---------------------------------------------------------------------------
+# lint-benchmark
+# ---------------------------------------------------------------------------
+
+def _cmd_lint_benchmark(args: argparse.Namespace) -> int:
+    from evomerge.security.benchmark_linter import lint_benchmark_dir, print_lint_report
+
+    task_dir = Path(args.task_dir)
+    result = lint_benchmark_dir(task_dir)
+    print_lint_report(result)
+    return 0 if result.score >= args.fail_under else 1
+
+
+# ---------------------------------------------------------------------------
 # argument parser
 # ---------------------------------------------------------------------------
 
@@ -398,6 +441,21 @@ def _build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--out", metavar="FILE",
                     help="output JSONL path (default: stdout)")
 
+    # --- validate-aep ---
+    aep = sub.add_parser("validate-aep", help="validate AEP (Agent Evidence Protocol) records")
+    aep.add_argument("--input", metavar="FILE", required=True,
+                     help="AEP records JSONL file")
+    aep.add_argument("--fail-under", type=float, default=1.0, metavar="F",
+                     help="minimum pass rate (0.0–1.0) required for exit 0 (default: 1.0)")
+
+    # --- lint-benchmark ---
+    lb = sub.add_parser("lint-benchmark",
+                        help="check a benchmark task dir for anti-reward-hacking exploit surfaces")
+    lb.add_argument("--task-dir", metavar="PATH", required=True,
+                    help="path to the benchmark task directory to lint")
+    lb.add_argument("--fail-under", type=float, default=0.6, metavar="F",
+                    help="minimum trust score (0.0–1.0) required for exit 0 (default: 0.6)")
+
     return p
 
 
@@ -417,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
         "router": _cmd_router,
         "synthesize": _cmd_synthesize,
         "validate": _cmd_validate,
+        "validate-aep": _cmd_validate_aep,
+        "lint-benchmark": _cmd_lint_benchmark,
     }
     return dispatch[args.command](args)
 

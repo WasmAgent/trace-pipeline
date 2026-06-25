@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-06-25
 
+### Added (P0 AEP reform)
+
+- **`schemas/aep-record.schema.json`** — JSON Schema draft-07 for `AEPRecord` (`aep/v0.1`).
+  Cross-repo source of truth for AEP validation. Required fields: `schema_version`, `run_id`,
+  `created_at_ms`. Optional arrays: `actions`, `verifier_results`, `capability_decisions`,
+  `input_refs`, `output_refs`.
+
+- **`evomerge/validate/aep.py`** — AEP record validation. `validate_aep_record()` validates
+  a single dict against the JSON schema (graceful fallback if `jsonschema` not installed).
+  `AEPValidationResult` with `evidence_completeness` ratio and `passed` predicate.
+  `validate_aep_file()` for JSONL batch validation. `print_aep_report()` for human-readable output.
+
+- **`evomerge/__main__.py` — `validate-aep` subcommand**. Accepts `--input FILE` (JSONL) and
+  `--fail-under FLOAT` (default 1.0). Exits 0 if pass rate ≥ threshold, else 1. Intended to
+  gate training export: run before `python -m evomerge export`.
+
+- **`evomerge/security/benchmark_linter.py`** — Benchmark linter v0.1. `lint_benchmark_dir()`
+  runs 6 anti-reward-hacking checks on a task directory: gold-answer readability, test-script
+  writability, env-file presence, grader replaceability, git-dir leak, task manifest absence.
+  `BenchmarkTrustScore` with numeric score (1.0 = clean, deductions per severity) and `trusted`
+  predicate. 7 tests pass (`tests/test_benchmark_linter.py`).
+
+- **`evomerge/__main__.py` — `lint-benchmark` subcommand**. Accepts `--task-dir PATH` and
+  `--fail-under FLOAT` (default 0.6). Exits 0 if trust score ≥ threshold, else 1.
+
 ### Added (P0/P1/P2 pipeline modules)
 
 - **`evomerge/adp/export.py`** — ADP (Agent Data Protocol) export. `rollout_to_adp()` converts
