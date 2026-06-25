@@ -1,8 +1,11 @@
-# WasmAgent-native Compliance-conditioned Small Models
+# ComplianceEvalRecord: Turning Agent Runtime Failures into Verifiable SFT and DPO Data
 
-> Draft: 2026-06-24
-> Status: working draft — experiments in progress
+> Draft: 2026-06-25
+> Status: working draft — SFT-v3 + DPO experiments in progress
 > Repo: `evomerge-framework` · `wasmagent-js/packages/compliance`
+>
+> *Previous working title: "WasmAgent-native Compliance-conditioned Small Models"*
+> *Renamed to focus on the data construction contribution, not the final model.*
 
 ---
 

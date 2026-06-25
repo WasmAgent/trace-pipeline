@@ -31,7 +31,9 @@ automatically from existing logs, and release `eval_trust`, an Apache-2.0
 toolkit bundling paired statistics, conformal CI, and the audit heuristics we
 wish we had used at the start. The toolkit is offered not as a theoretical
 contribution but as the cheapest known patch for a recurrent failure mode in
-small-delta merging claims.
+small-delta merging claims. We also provide a 10-item pre-submission audit
+checklist (Appendix A) that any merging paper claiming a delta below 10 pp
+should pass before public release.
 
 **Keywords:** model merging, evaluation, measurement validity, GSM8K,
 reproducibility, McNemar test, conformal prediction.
