@@ -174,7 +174,7 @@ def main() -> None:
     from evomerge.validate.quality_gate import admission_gate
 
     gate = admission_gate(aep_records)
-    print(f"\nEvidence Admission Summary:")
+    print("\nEvidence Admission Summary:")
     print(f"  total      : {gate['total']}")
     print(f"  mean_score : {gate['mean_score']}")
     for cat, count in gate["by_category"].items():
