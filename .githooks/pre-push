@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# pre-push — reject pushes that would fail CI.
+#
+# Mirrors the trace-pipeline Makefile `make test` and `make lint` targets,
+# plus a NUL/control-byte source scan.
+#
+# Emergency bypass:  git push --no-verify
+# Enable per-clone:  bash .githooks/install.sh
+#
+# Skip individual checks:
+#   SKIP_LINT=1 SKIP_TEST=1 SKIP_NUL=1
+
+set -e
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Skip on local scratch branches.
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+case "$CURRENT_BRANCH" in
+  scratch/*|draft/*|wip/*)
+    echo "[pre-push] skipped — branch '$CURRENT_BRANCH' matches scratch pattern."
+    exit 0
+    ;;
+esac
+
+cyan() { printf "\033[36m%s\033[0m\n" "$*"; }
+red()  { printf "\033[31m%s\033[0m\n" "$*"; }
+green(){ printf "\033[32m%s\033[0m\n" "$*"; }
+
+step() {
+  local name=$1; shift
+  cyan "→ $name"
+  if "$@"; then
+    green "  ✓ $name"
+  else
+    red "  ✗ $name failed."
+    red "  Run: $*"
+    red "  Bypass (NOT recommended): git push --no-verify"
+    exit 1
+  fi
+}
+
+START=$(date +%s 2>/dev/null || echo 0)
+
+PY=${PYTHON:-python3}
+
+if [ "${SKIP_LINT:-0}" != "1" ]; then
+  step "Lint (ruff)" ruff check eval_trust/ evomerge/ scripts/ tests/ run_audit.py
+fi
+
+if [ "${SKIP_NUL:-0}" != "1" ]; then
+  step "Source files free of NUL/control bytes" $PY scripts/check_no_control_bytes.py
+fi
+
+if [ "${SKIP_TEST:-0}" != "1" ]; then
+  step "Test (pytest)" $PY -m pytest tests/ -x -q
+fi
+
+END=$(date +%s 2>/dev/null || echo 0)
+ELAPSED=$((END - START))
+green "✓ All pre-push checks passed in ${ELAPSED}s."
+exit 0

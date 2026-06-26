@@ -1,11 +1,14 @@
 """Tests for AgentTrustScore."""
+import pytest
 from evomerge.trust_score import (
     AgentTrustScore, AgentTrustScoreBuilder, compute_trust_score, _geometric_mean
 )
 
 
-def test_geometric_mean_empty():
-    assert _geometric_mean([]) == 1.0
+def test_geometric_mean_empty_raises():
+    """Empty list must raise ValueError, not silently return 1.0."""
+    with pytest.raises(ValueError, match="empty list"):
+        _geometric_mean([])
 
 
 def test_geometric_mean_zeros():
@@ -18,11 +21,21 @@ def test_geometric_mean_values():
 
 
 def test_grade_mapping():
-    assert AgentTrustScore(0.95, {}).grade == "A"
-    assert AgentTrustScore(0.80, {}).grade == "B"
+    # A requires overall >= 0.9 AND >= 6 known (non-None) dimensions
+    dims_a = {f"dim{i}": 0.95 for i in range(6)}
+    assert AgentTrustScore(0.95, dims_a).grade == "A"
+
+    # B requires overall >= 0.75 AND >= 4 known dimensions
+    dims_b = {f"dim{i}": 0.8 for i in range(4)}
+    assert AgentTrustScore(0.80, dims_b).grade == "B"
+
+    # C, D, F have no minimum known-dim requirement
     assert AgentTrustScore(0.65, {}).grade == "C"
     assert AgentTrustScore(0.45, {}).grade == "D"
     assert AgentTrustScore(0.30, {}).grade == "F"
+
+    # High overall but too few known dims → drops to C, not A
+    assert AgentTrustScore(0.95, {"only_one": 0.95}).grade == "C"
 
 
 def test_clean_aep_scores_1():
@@ -37,8 +50,13 @@ def test_clean_aep_scores_1():
     score = compute_trust_score(aep_record=record, task_passed=True, has_receipt=True)
     assert score.breakdown["task_success"] == 1.0
     assert score.breakdown["verifier_agreement"] == 1.0
-    assert score.breakdown["policy_compliance"] == 1.0
-    assert score.overall > 0.9
+    # No capability_decisions → policy_compliance is unknown (None), not 1.0
+    assert score.breakdown["policy_compliance"] is None
+    # No state-changing actions → evidence_completeness is unknown (None)
+    assert score.breakdown["evidence_completeness"] is None
+    # Overall is computed from known dimensions only (task_success, verifier_agreement,
+    # supply_chain_integrity) — must be > 0 but cannot reach A grade (< 6 known dims)
+    assert score.overall is not None and score.overall > 0.0
 
 
 def test_deny_decision_lowers_score():

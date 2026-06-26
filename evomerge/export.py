@@ -80,6 +80,7 @@ def run_export(
     task_specs: dict | None = None,
     eval_records: list | None = None,
     router_source: str = "wasmagent-eval",
+    require_attested_dpo: bool = False,
 ) -> ExportManifest:
     """Full pipeline: load traces, convert, validate, decontaminate, export.
 
@@ -95,6 +96,12 @@ def run_export(
             When provided together with eval_records, router.jsonl is written.
         eval_records: list[EvalRecord] from the small-model group.
         router_source: provenance source label for RouterRecord.
+        require_attested_dpo: when True, DPO pairs are only produced from
+            branches whose verifier_results contain an entry with
+            evidence_source == "attested" and a non-empty signer.key_id.
+            Defaults to False for backward compatibility with fixtures that
+            predate the attestation requirement.  Set to True in production
+            pipelines that consume wasmagent-js AEP v0.2+ rollout data.
 
     Returns:
         ExportManifest with counts and output file paths.
@@ -109,7 +116,7 @@ def run_export(
     )
 
     sft_records = to_sft_records(rollouts, only_passing=only_passing_sft)
-    dpo_records = to_dpo_records(rollouts)
+    dpo_records = to_dpo_records(rollouts, require_attested_evidence=require_attested_dpo)
     ppo_records = to_ppo_records(rollouts)
     compliance_sft = compliance_to_sft_records(compliance)
 

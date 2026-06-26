@@ -105,12 +105,19 @@ class TestSftPipeline:
 
 
 class TestDpoPipeline:
+    """Tests for to_dpo_records basic pairing logic.
+
+    All calls use require_attested_evidence=False because the test fixture
+    branches are minimal stubs without verifier_results; attestation gate
+    behaviour is tested separately in test_contamination_unicode.py.
+    """
+
     def test_basic_pair(self):
         branches = [
             _branch(branch_index=0, score=1, status="pass", answer="Good."),
             _branch(branch_index=1, score=0, status="fail", answer="Bad."),
         ]
-        records = to_dpo_records(branches)
+        records = to_dpo_records(branches, require_attested_evidence=False)
         assert len(records) == 1
         assert records[0].chosen == "Good."
         assert records[0].rejected == "Bad."
@@ -120,11 +127,11 @@ class TestDpoPipeline:
             _branch(branch_index=0, score=1, status="unknown"),
             _branch(branch_index=1, score=0, status="unknown"),
         ]
-        records = to_dpo_records(branches)
+        records = to_dpo_records(branches, require_attested_evidence=False)
         assert records == []
 
     def test_skips_single_branch(self):
-        records = to_dpo_records([_branch()])
+        records = to_dpo_records([_branch()], require_attested_evidence=False)
         assert records == []
 
     def test_different_rollouts_not_paired(self):
@@ -132,7 +139,7 @@ class TestDpoPipeline:
             _branch(rollout_id="r1", branch_index=0, score=1, status="pass"),
             _branch(rollout_id="r2", branch_index=0, score=0, status="fail"),
         ]
-        records = to_dpo_records(branches)
+        records = to_dpo_records(branches, require_attested_evidence=False)
         assert records == []
 
     def test_prompt_messages_excludes_last(self):
@@ -140,7 +147,7 @@ class TestDpoPipeline:
             _branch(branch_index=0, score=1, status="pass"),
             _branch(branch_index=1, score=0, status="fail"),
         ]
-        rec = to_dpo_records(branches)[0]
+        rec = to_dpo_records(branches, require_attested_evidence=False)[0]
         assert rec.prompt_messages is not None
         assert len(rec.prompt_messages) == len(rec.messages) - 1
 

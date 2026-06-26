@@ -900,10 +900,18 @@ def _cmd_audit_report(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_trust_score(args: argparse.Namespace) -> int:
-    """Compute composite AgentTrustScore for an agent run."""
+    """Compute composite AgentTrustScore for an agent run.
+
+    AEP JSONL processing: all non-comment records are grouped by trace_id /
+    run_id.  Each group is scored independently so that a single malicious or
+    empty record cannot silently mask problems in a multi-record file.
+    """
     from evomerge.trust_score import AgentTrustScoreBuilder
 
-    builder = AgentTrustScoreBuilder()
+    # ------------------------------------------------------------------
+    # Collect AEP records grouped by run_id / trace_id
+    # ------------------------------------------------------------------
+    groups: dict[str, list[dict]] = {}  # group_key → list of records
 
     if args.aep:
         aep_path = Path(args.aep)
@@ -913,37 +921,67 @@ def _cmd_trust_score(args: argparse.Namespace) -> int:
         with open(aep_path) as fh:
             for line in fh:
                 line = line.strip()
-                if line and not line.startswith("#"):
+                if not line or line.startswith("#"):
+                    continue
+                try:
                     record = json.loads(line)
-                    builder.add_aep_record(record)
-                    break  # use first record when a single AEP run is expected
+                except json.JSONDecodeError as exc:
+                    print(f"[warn] skipping malformed JSON line: {exc}", file=sys.stderr)
+                    continue
+                # Group by trace_id, then run_id, then fall back to a single bucket
+                key = (
+                    record.get("trace_id")
+                    or record.get("run_id")
+                    or "__ungrouped__"
+                )
+                groups.setdefault(key, []).append(record)
 
-    if args.task_passed:
-        builder.add_task_success(True)
+    # If no AEP file provided, create one empty group to still emit a score
+    if not groups:
+        groups["__no_aep__"] = []
 
-    if args.benchmark_trust is not None:
-        builder.add_benchmark_trust(args.benchmark_trust)
+    # ------------------------------------------------------------------
+    # Score each group
+    # ------------------------------------------------------------------
+    results: list[dict] = []
+    for group_key, records in groups.items():
+        builder = AgentTrustScoreBuilder()
 
-    has_receipt = False
-    if args.receipt:
-        receipt_path = Path(args.receipt)
-        if not receipt_path.exists():
-            print(f"[error] receipt file not found: {receipt_path}", file=sys.stderr)
-            return 1
-        has_receipt = True
+        for record in records:
+            builder.add_aep_record(record)
 
-    builder.add_receipt(has_receipt)
+        if args.task_passed:
+            builder.add_task_success(True)
 
-    score = builder.build()
-    result = score.to_dict()
+        if args.benchmark_trust is not None:
+            builder.add_benchmark_trust(args.benchmark_trust)
+
+        if args.receipt:
+            receipt_path = Path(args.receipt)
+            if not receipt_path.exists():
+                print(f"[error] receipt file not found: {receipt_path}", file=sys.stderr)
+                return 1
+            builder.add_receipt_path(receipt_path)
+        else:
+            builder.add_receipt(has_receipt=False)
+
+        score = builder.build()
+        entry = score.to_dict()
+        entry["group_key"] = group_key
+        results.append(entry)
+
+    # ------------------------------------------------------------------
+    # Output
+    # ------------------------------------------------------------------
+    output_payload = results[0] if len(results) == 1 else {"groups": results}
 
     if args.output and args.output != "-":
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        out_path.write_text(json.dumps(output_payload, indent=2, ensure_ascii=False))
         print(f"[ok] trust score written to {out_path}")
     else:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(output_payload, indent=2, ensure_ascii=False))
     return 0
 
 

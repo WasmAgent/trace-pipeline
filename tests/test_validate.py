@@ -66,9 +66,10 @@ class TestContamination:
 
     def test_threshold_respected(self):
         # Jaccard=1.0 exceeds even a very high threshold — the flag is correct.
-        # Use a threshold above 1.0 to confirm nothing is flagged.
+        # Use a threshold above 1.0 for both token-level and char-level to
+        # confirm nothing is flagged when both gates are disabled.
         text = "one two three four five six seven eight nine ten"
-        report = check_contamination([text], [text], threshold=1.01)
+        report = check_contamination([text], [text], threshold=1.01, char_threshold=1.01)
         assert report.n_flagged == 0
 
     def test_empty_training(self):

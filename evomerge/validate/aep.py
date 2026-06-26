@@ -1,9 +1,16 @@
 """AEP (Agent Evidence Protocol) record validation.
 
 Validates AEP records against the JSON schema and checks evidence completeness.
+Optionally verifies Ed25519 signatures on records when require_signature=True.
+
+Design rules
+- jsonschema is a hard dependency; ImportError is never silently swallowed.
+- Signature verification uses the keystore to load keys from env vars.
+  An unknown key_id or an invalid signature is always a verification failure.
 """
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,9 +18,17 @@ from typing import Any
 
 try:
     import jsonschema
-    _HAS_JSONSCHEMA = True
-except ImportError:
-    _HAS_JSONSCHEMA = False
+except ImportError as _exc:
+    raise ImportError(
+        "jsonschema is required for AEP validation. "
+        "Install it with: pip install jsonschema"
+    ) from _exc
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.exceptions import InvalidSignature
+
+from evomerge.validate.keystore import KeyNotFoundError, load_public_key
+
 
 _SCHEMA_PATH = Path(__file__).parent.parent.parent / "schemas" / "aep-record.schema.json"
 
@@ -48,27 +63,93 @@ class AEPValidationResult:
         return self.valid_schema and len(self.errors) == 0
 
 
-def validate_aep_record(record: dict[str, Any]) -> AEPValidationResult:
+def _verify_signature(record: dict[str, Any]) -> list[str]:
+    """Verify the Ed25519 signature block in a record.
+
+    Expected structure (W1 contract):
+        record["signature"] = {
+            "alg": "ed25519",
+            "key_id": "<string>",
+            "sig": "<base64-encoded 64-byte signature>",
+        }
+
+    The signed payload is the canonical JSON of the record with the
+    "signature" field removed, serialized with sorted keys, no spaces.
+
+    Returns a list of error strings (empty means verification passed).
+    """
+    errors: list[str] = []
+    sig_block = record.get("signature")
+    if sig_block is None:
+        errors.append("signature: missing 'signature' field in record")
+        return errors
+
+    alg = sig_block.get("alg")
+    key_id = sig_block.get("key_id")
+    sig_b64 = sig_block.get("sig")
+
+    if alg != "ed25519":
+        errors.append(f"signature: unsupported algorithm {alg!r}, expected 'ed25519'")
+        return errors
+    if not key_id:
+        errors.append("signature: missing 'key_id' in signature block")
+        return errors
+    if not sig_b64:
+        errors.append("signature: missing 'sig' in signature block")
+        return errors
+
+    # Load public key from keystore (env var)
+    try:
+        pubkey: Ed25519PublicKey = load_public_key(key_id)
+    except KeyNotFoundError as exc:
+        errors.append(f"signature: {exc}")
+        return errors
+    except ValueError as exc:
+        errors.append(f"signature: key load error — {exc}")
+        return errors
+
+    # Decode the signature bytes
+    try:
+        # Accept both standard and URL-safe base64
+        padding = (4 - len(sig_b64) % 4) % 4
+        sig_bytes = base64.urlsafe_b64decode(sig_b64 + "=" * padding)
+    except Exception as exc:
+        errors.append(f"signature: cannot base64-decode 'sig': {exc}")
+        return errors
+
+    # Reconstruct signed payload: record minus the "signature" field, sorted keys
+    payload_dict = {k: v for k, v in record.items() if k != "signature"}
+    payload_bytes = json.dumps(payload_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+    try:
+        pubkey.verify(sig_bytes, payload_bytes)
+    except InvalidSignature:
+        errors.append("signature: Ed25519 signature verification failed")
+
+    return errors
+
+
+def validate_aep_record(
+    record: dict[str, Any],
+    require_signature: bool = False,
+) -> AEPValidationResult:
     run_id = record.get("run_id", "<unknown>")
     errors: list[str] = []
 
-    # Schema validation
+    # Schema validation (jsonschema is a hard dependency — no fallback)
     valid_schema = True
-    if _HAS_JSONSCHEMA:
-        try:
-            schema = _load_schema()
-            jsonschema.validate(record, schema)
-        except jsonschema.ValidationError as e:
-            valid_schema = False
-            errors.append(f"schema: {e.message}")
-    else:
-        # Minimal check without jsonschema
-        if record.get("schema_version") not in ("aep/v0.1", "aep/v0.2"):
-            valid_schema = False
-            errors.append("schema_version must be 'aep/v0.1' or 'aep/v0.2'")
-        if "run_id" not in record:
-            valid_schema = False
-            errors.append("run_id is required")
+    try:
+        schema = _load_schema()
+        jsonschema.validate(record, schema)
+    except jsonschema.ValidationError as e:
+        valid_schema = False
+        errors.append(f"schema: {e.message}")
+
+    # Signature verification
+    if require_signature:
+        sig_errors = _verify_signature(record)
+        if sig_errors:
+            errors.extend(sig_errors)
 
     actions = record.get("actions", [])
     sc_actions = [a for a in actions if a.get("state_changing")]
@@ -97,7 +178,10 @@ def validate_aep_record(record: dict[str, Any]) -> AEPValidationResult:
     )
 
 
-def validate_aep_file(path: Path) -> list[AEPValidationResult]:
+def validate_aep_file(
+    path: Path,
+    require_signature: bool = False,
+) -> list[AEPValidationResult]:
     results = []
     with open(path) as fh:
         for i, line in enumerate(fh, 1):
@@ -118,7 +202,7 @@ def validate_aep_file(path: Path) -> list[AEPValidationResult]:
                     errors=[f"JSON parse error: {e}"],
                 ))
                 continue
-            results.append(validate_aep_record(record))
+            results.append(validate_aep_record(record, require_signature=require_signature))
     return results
 
 

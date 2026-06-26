@@ -65,7 +65,8 @@ class TestDataLoopPipeline:
         from evomerge.io import load_rollouts
         from evomerge.pipeline.dpo import to_dpo_records
         branches = load_rollouts(FIXTURE_JSONL)
-        records = to_dpo_records(branches)
+        # Fixture predates AEP attestation requirement; disable gate for smoke test.
+        records = to_dpo_records(branches, require_attested_evidence=False)
         assert len(records) == fixture_manifest["expected"]["n_dpo"]
 
     def test_dpo_chosen_is_passing_branch(self, fixture_manifest):
@@ -74,7 +75,8 @@ class TestDataLoopPipeline:
         branches = load_rollouts(FIXTURE_JSONL)
         passing = next(b for b in branches if b.objective_score == 1)
         failing = next(b for b in branches if b.objective_score == 0)
-        records = to_dpo_records(branches)
+        # Fixture predates AEP attestation requirement; disable gate for smoke test.
+        records = to_dpo_records(branches, require_attested_evidence=False)
         assert records[0].chosen == passing.final_answer
         assert records[0].rejected == failing.final_answer
 

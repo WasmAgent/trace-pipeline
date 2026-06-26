@@ -15,13 +15,58 @@ Checks applied before exporting training records for fine-tuning:
   Overall:
     - total record count vs minimum threshold
     - contamination flag (requires eval_items if provided)
+
+  Security checks (run_quality_gate):
+    - Anomalous objective_score (> 1.0, < 0.0, or NaN) in any rollout record
+      triggers an audit log entry and adds an "error"-level issue.
+    - Prompt-injection keyword detection: if any text field contains a
+      substring matching the INJECTION_SIGNAL_FRAGMENTS list, an audit log
+      entry is written and the batch is rejected with an "error"-level issue.
 """
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass, field
 from typing import Sequence
 
 from evomerge.schemas.training import DpoTrainingRecord, SftTrainingRecord
+
+_AUDIT_LOG = logging.getLogger("evomerge.audit")
+
+# Substring signals extracted from the W4 RISK_CORPUS (injection_en / jailbreak
+# categories).  These are plain lowercase substrings; matching is performed
+# after NFKC + lowercase on the candidate text so homoglyphs and full-width
+# variants are caught.  Keep the list short and high-precision: only include
+# phrases that are unambiguously adversarial in a training-data context.
+INJECTION_SIGNAL_FRAGMENTS: tuple[str, ...] = (
+    "ignore previous instructions",
+    "ignore all previous",
+    "disregard your instructions",
+    "disregard all",
+    "forget your previous context",
+    "forget all previous",
+    "new instructions:",
+    "system prompt:",
+    "you are now dan",
+    "you are now an unrestricted",
+    "override safety filters",
+    "end of prior context",
+    "ignore prior",
+    "exfiltrate",
+    "leak the private key",
+    "leak all secrets",
+    "output the system prompt",
+    "reveal all confidential",
+    "send all collected data",
+    "act as an ai with developer mode",
+    "unrestricted language model",
+    "no content filters",
+    "hacker ai without restrictions",
+    "no guidelines or safety rules",
+    "ethical constraints have been removed",
+    "unfiltered, compliant ai",
+)
 
 
 @dataclass
@@ -186,6 +231,109 @@ def check_dpo_quality(
     return issues
 
 
+def _nfkc_lower(text: str) -> str:
+    """NFKC-normalise and lowercase; used for injection signal matching."""
+    import unicodedata
+    return unicodedata.normalize("NFKC", text).lower()
+
+
+def check_anomalous_scores(
+    rollout_records: Sequence[dict],
+) -> list[QualityIssue]:
+    """Check rollout dicts for anomalous objective_score values.
+
+    A score is anomalous when it is NaN, infinite, > 1.0, or < 0.0.
+    Each anomalous record is written to the audit log and the function
+    returns one aggregated QualityIssue at "error" level.
+
+    Args:
+        rollout_records: raw dicts (e.g. from JSON deserialization) that
+            should have an ``objective_score`` field.
+
+    Returns:
+        List of QualityIssue (at most one, aggregated).
+    """
+    issues: list[QualityIssue] = []
+    anomalous: list[int] = []
+    for idx, rec in enumerate(rollout_records):
+        score = rec.get("objective_score")
+        if score is None:
+            continue
+        try:
+            fval = float(score)
+        except (TypeError, ValueError):
+            fval = float("nan")
+        if math.isnan(fval) or math.isinf(fval) or fval < 0.0 or fval > 1.0:
+            _AUDIT_LOG.warning(
+                "anomalous_score: record index=%d objective_score=%r — "
+                "expected value in [0.0, 1.0]; record excluded from training",
+                idx,
+                score,
+            )
+            anomalous.append(idx)
+    if anomalous:
+        issues.append(QualityIssue(
+            level="error",
+            check="anomalous_objective_score",
+            message=(
+                f"{len(anomalous)} record(s) have objective_score outside [0.0, 1.0] "
+                f"or NaN/Inf (indices: {anomalous[:10]}{'...' if len(anomalous) > 10 else ''})"
+            ),
+            value=len(anomalous),
+            threshold=0,
+        ))
+    return issues
+
+
+def check_injection_signals(
+    texts: Sequence[str],
+    *,
+    fragments: tuple[str, ...] = INJECTION_SIGNAL_FRAGMENTS,
+) -> list[QualityIssue]:
+    """Scan text fields for prompt-injection keyword signals.
+
+    Each text is NFKC-normalised and lowercased before matching so that
+    full-width homoglyphs and look-alike substitutions are caught.  Matching
+    is substring-based (not regex) for efficiency and predictability.
+
+    A hit is written to the audit log.  The function returns one aggregated
+    QualityIssue at "error" level if any signal is found.
+
+    Args:
+        texts: iterable of strings to scan (e.g. task, final_answer fields).
+        fragments: tuple of lowercase substring signals to match against.
+
+    Returns:
+        List of QualityIssue (at most one, aggregated).
+    """
+    issues: list[QualityIssue] = []
+    hits: list[dict] = []
+    for idx, raw in enumerate(texts):
+        normalised = _nfkc_lower(raw)
+        for frag in fragments:
+            if frag in normalised:
+                _AUDIT_LOG.warning(
+                    "injection_signal: text index=%d matched fragment=%r — "
+                    "record excluded; audit review required",
+                    idx,
+                    frag,
+                )
+                hits.append({"index": idx, "fragment": frag})
+                break  # one hit per text is sufficient
+    if hits:
+        issues.append(QualityIssue(
+            level="error",
+            check="injection_signal",
+            message=(
+                f"{len(hits)} text(s) contain prompt-injection signal fragments — "
+                f"review audit log; first hit: {hits[0]['fragment']!r}"
+            ),
+            value=len(hits),
+            threshold=0,
+        ))
+    return issues
+
+
 def run_quality_gate(
     sft_records: Sequence[SftTrainingRecord] | None = None,
     dpo_records: Sequence[DpoTrainingRecord] | None = None,
@@ -194,6 +342,7 @@ def run_quality_gate(
     contamination_threshold: float = 0.2,
     sft_min_records: int = 100,
     dpo_min_records: int = 20,
+    rollout_records: Sequence[dict] | None = None,
 ) -> QualityReport:
     """Run all quality checks and return a QualityReport.
 
@@ -204,6 +353,9 @@ def run_quality_gate(
         contamination_threshold: Jaccard threshold for flagging contamination.
         sft_min_records: minimum SFT records required.
         dpo_min_records: minimum DPO records recommended.
+        rollout_records: optional raw rollout dicts for anomalous-score and
+            injection-signal checks.  When supplied, objective_score values are
+            validated and text fields are scanned for injection signals.
 
     Returns:
         QualityReport — call .ok to check pass/fail, .print_report() for summary.
@@ -218,6 +370,19 @@ def run_quality_gate(
 
     if dpo:
         report.issues.extend(check_dpo_quality(dpo, min_records=dpo_min_records))
+
+    # Anomalous score + injection signal checks on raw rollout dicts
+    if rollout_records:
+        report.issues.extend(check_anomalous_scores(rollout_records))
+        # Collect all text fields for injection scanning
+        injection_texts: list[str] = []
+        for rec in rollout_records:
+            for field_name in ("task", "final_answer"):
+                val = rec.get(field_name)
+                if isinstance(val, str):
+                    injection_texts.append(val)
+        if injection_texts:
+            report.issues.extend(check_injection_signals(injection_texts))
 
     if eval_texts and (sft or dpo):
         from evomerge.validate.contamination import check_contamination
@@ -237,9 +402,13 @@ def run_quality_gate(
     return report
 
 
-__all__ = ["QualityIssue", "QualityReport", "check_dpo_quality",
-           "check_sft_quality", "run_quality_gate",
-           "ADMISSION_CATEGORIES", "compute_admission_score", "admission_gate"]
+__all__ = [
+    "QualityIssue", "QualityReport", "check_dpo_quality",
+    "check_sft_quality", "run_quality_gate",
+    "check_anomalous_scores", "check_injection_signals",
+    "INJECTION_SIGNAL_FRAGMENTS",
+    "ADMISSION_CATEGORIES", "compute_admission_score", "admission_gate",
+]
 
 
 # ── Evidence Admission Score ──────────────────────────────────────────────────

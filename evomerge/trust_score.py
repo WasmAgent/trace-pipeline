@@ -4,17 +4,24 @@ AgentTrustScore aggregates multiple evidence dimensions into a single
 [0.0, 1.0] score with per-dimension breakdown. Based on the P2-1
 reform roadmap formula.
 
-Dimensions (all optional — missing dims contribute 1.0 neutral weight):
+Dimensions (all optional — missing dims are recorded as None/unknown):
   task_success          — did the agent complete the task correctly?
   evidence_completeness — AEP evidence coverage for state-changing actions
   policy_compliance     — fraction of tool calls allowed (no deny decisions)
   budget_compliance     — did the run stay within declared budgets?
   verifier_agreement    — fraction of verifiers that passed
   benchmark_trust       — benchmark environment trust score (linter)
-  supply_chain_integrity— run receipt present and verified?
+  supply_chain_integrity— run receipt present and digest verified?
 
-Score formula: geometric mean of all present dimensions.
+Score formula: geometric mean of all present (non-None) dimensions.
 Any dimension scoring 0 collapses the overall score to 0.
+
+Grade thresholds require a minimum number of evidence-backed dimensions:
+  A: overall >= 0.9 AND >= 6 known (non-None) dimensions
+  B: overall >= 0.75 AND >= 4 known dimensions
+  C: overall >= 0.6
+  D: overall >= 0.4
+  F: otherwise
 
 Usage:
     from evomerge.trust_score import AgentTrustScoreBuilder, compute_trust_score
@@ -22,30 +29,50 @@ Usage:
     builder = AgentTrustScoreBuilder()
     builder.add_aep_record(aep_record_dict)
     builder.add_benchmark_trust(benchmark_trust_score)
-    builder.add_receipt(has_receipt, digest_verified)
+    builder.add_receipt_path(receipt_path)   # verifies digest
     score = builder.build()
-    print(score.overall)   # 0.0 – 1.0
-    print(score.breakdown) # per-dimension dict
+    print(score.overall)   # 0.0 – 1.0 or None if no dimensions
+    print(score.breakdown) # per-dimension dict (None = unknown)
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+# Minimum number of non-None ("known") dimensions required for each grade
+_MIN_KNOWN_FOR_GRADE: dict[str, int] = {
+    "A": 6,
+    "B": 4,
+    "C": 0,
+    "D": 0,
+    "F": 0,
+}
 
 
 @dataclass
 class AgentTrustScore:
     """Composite trust score for one agent run."""
-    overall: float                        # geometric mean, 0.0–1.0
-    breakdown: dict[str, float]          # dimension → score
+    overall: float | None                     # geometric mean, 0.0–1.0, or None if no dims
+    breakdown: dict[str, float | None]       # dimension → score (None = unknown)
     notes: list[str] = field(default_factory=list)
 
     @property
+    def _known_dim_count(self) -> int:
+        """Number of dimensions with a real (non-None) score."""
+        return sum(1 for v in self.breakdown.values() if v is not None)
+
+    @property
     def grade(self) -> str:
-        if self.overall >= 0.9:
+        if self.overall is None:
+            return "F"
+        known = self._known_dim_count
+        if self.overall >= 0.9 and known >= _MIN_KNOWN_FOR_GRADE["A"]:
             return "A"
-        if self.overall >= 0.75:
+        if self.overall >= 0.75 and known >= _MIN_KNOWN_FOR_GRADE["B"]:
             return "B"
         if self.overall >= 0.6:
             return "C"
@@ -55,31 +82,79 @@ class AgentTrustScore:
 
     def to_dict(self) -> dict:
         return {
-            "overall": round(self.overall, 4),
+            "overall": round(self.overall, 4) if self.overall is not None else None,
             "grade": self.grade,
-            "breakdown": {k: round(v, 4) for k, v in self.breakdown.items()},
+            "breakdown": {
+                k: (round(v, 4) if v is not None else None)
+                for k, v in self.breakdown.items()
+            },
             "notes": self.notes,
         }
 
 
 def _geometric_mean(values: list[float]) -> float:
+    """Geometric mean of a non-empty list of positive floats.
+
+    Raises:
+        ValueError: if *values* is empty — callers must handle the no-evidence case
+                    explicitly rather than silently treating it as 1.0.
+    """
     if not values:
-        return 1.0
+        raise ValueError(
+            "_geometric_mean() called with an empty list. "
+            "Callers must skip the geometric mean when no evidence dimensions are present "
+            "and return None (unknown) instead of 1.0."
+        )
     if any(v <= 0 for v in values):
         return 0.0
     log_sum = sum(math.log(v) for v in values)
     return math.exp(log_sum / len(values))
 
 
+def _verify_receipt_digest(receipt_path: Path) -> bool:
+    """Re-compute the receipt's own canonical SHA-256 and compare to receipt_digest field.
+
+    Returns True only if the receipt file is well-formed JSON that contains a
+    ``receipt_digest`` field whose value matches a freshly computed digest of
+    the canonical (sort_keys, no whitespace) serialisation of the receipt body
+    (i.e. all fields *except* ``receipt_digest`` itself).
+
+    Returns False for any of: file not found, invalid JSON, missing field,
+    or digest mismatch.
+    """
+    try:
+        raw = receipt_path.read_text(encoding="utf-8")
+        data: dict = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    stored_digest = data.get("receipt_digest")
+    if not stored_digest or not isinstance(stored_digest, str):
+        # Receipt does not carry a self-digest — cannot verify integrity.
+        # Treat as unverified rather than passing.
+        return False
+
+    # Recompute from the receipt body (excluding the digest field itself)
+    body = {k: v for k, v in data.items() if k != "receipt_digest"}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    computed = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return computed == stored_digest
+
+
 class AgentTrustScoreBuilder:
     """Build an AgentTrustScore incrementally from evidence sources."""
 
     def __init__(self) -> None:
-        self._dims: dict[str, float] = {}
+        self._dims: dict[str, float | None] = {}
         self._notes: list[str] = []
 
     def add_aep_record(self, record: dict[str, Any]) -> "AgentTrustScoreBuilder":
-        """Extract evidence_completeness, policy_compliance, verifier_agreement, budget_compliance."""
+        """Extract evidence_completeness, policy_compliance, verifier_agreement, budget_compliance.
+
+        When a dimension's evidence is absent (empty list / missing field), the
+        dimension is recorded as *None* (unknown) rather than 1.0. This
+        prevents empty records from artificially inflating the overall score.
+        """
         actions = record.get("actions", [])
         cap_decisions = record.get("capability_decisions", [])
         verifier_results = record.get("verifier_results", [])
@@ -94,21 +169,34 @@ class AgentTrustScoreBuilder:
             )
             self._dims["evidence_completeness"] = evidenced / len(sc_actions)
         else:
-            self._dims["evidence_completeness"] = 1.0
+            # No state-changing actions → we cannot assess evidence coverage.
+            # Record as None (unknown) rather than a falsely perfect 1.0.
+            self._dims["evidence_completeness"] = None
+            self._notes.append(
+                "evidence_completeness: no state-changing actions found — dimension unknown"
+            )
 
         # policy_compliance: 1 - (deny_decisions / total_decisions)
         if cap_decisions:
             deny_count = sum(1 for d in cap_decisions if d.get("decision") == "deny")
             self._dims["policy_compliance"] = max(0.0, 1.0 - deny_count / len(cap_decisions))
         else:
-            self._dims["policy_compliance"] = 1.0
+            # No capability decisions recorded → cannot confirm policy was enforced.
+            self._dims["policy_compliance"] = None
+            self._notes.append(
+                "policy_compliance: no capability_decisions recorded — dimension unknown"
+            )
 
         # verifier_agreement: fraction of verifiers passed
         if verifier_results:
             passed = sum(1 for v in verifier_results if v.get("passed", False))
             self._dims["verifier_agreement"] = passed / len(verifier_results)
         else:
-            self._dims["verifier_agreement"] = 1.0
+            # No verifier results → cannot assert correctness.
+            self._dims["verifier_agreement"] = None
+            self._notes.append(
+                "verifier_agreement: no verifier_results recorded — dimension unknown"
+            )
 
         # budget_compliance: check if any budget was exceeded
         if budget:
@@ -131,6 +219,7 @@ class AgentTrustScoreBuilder:
                     violations += 1
             if checks > 0:
                 self._dims["budget_compliance"] = max(0.0, 1.0 - violations / checks)
+            # If budget_ledger present but no tracked sub-budgets, leave unset (no entry).
 
         return self
 
@@ -143,8 +232,15 @@ class AgentTrustScoreBuilder:
         self._dims["benchmark_trust"] = max(0.0, min(1.0, score))
         return self
 
-    def add_receipt(self, has_receipt: bool, digest_verified: bool = True) -> "AgentTrustScoreBuilder":
-        """Supply chain integrity: receipt present and digest verifiable."""
+    def add_receipt(self, has_receipt: bool, digest_verified: bool = False) -> "AgentTrustScoreBuilder":
+        """Supply chain integrity: receipt present and digest verified.
+
+        DEPRECATED shorthand — prefer add_receipt_path() which performs real
+        digest verification.  When called directly:
+          - has_receipt=False  → 0.5  (no receipt at all)
+          - has_receipt=True, digest_verified=False → 0.7 (file present, unverified)
+          - has_receipt=True, digest_verified=True  → 1.0 (caller asserts verified)
+        """
         if has_receipt and digest_verified:
             self._dims["supply_chain_integrity"] = 1.0
         elif has_receipt:
@@ -153,6 +249,33 @@ class AgentTrustScoreBuilder:
         else:
             self._dims["supply_chain_integrity"] = 0.5
             self._notes.append("No run receipt — supply chain integrity unverified")
+        return self
+
+    def add_receipt_path(self, receipt_path: Path | str) -> "AgentTrustScoreBuilder":
+        """Add supply chain integrity evidence by loading and verifying a receipt file.
+
+        The receipt must be a JSON object produced by RunReceiptBuilder.  This
+        method recomputes the SHA-256 digest of the canonical receipt body and
+        compares it against the stored ``receipt_digest`` field.
+
+          - File not found or invalid JSON → 0.5 (no receipt)
+          - File present but digest missing/mismatch → 0.7 (tampered or legacy)
+          - Digest matches → 1.0 (verified)
+        """
+        p = Path(receipt_path)
+        if not p.exists():
+            self._dims["supply_chain_integrity"] = 0.5
+            self._notes.append(f"Receipt file not found: {p.name} — supply chain unverified")
+            return self
+
+        if _verify_receipt_digest(p):
+            self._dims["supply_chain_integrity"] = 1.0
+        else:
+            self._dims["supply_chain_integrity"] = 0.7
+            self._notes.append(
+                f"Receipt present ({p.name}) but digest verification failed — "
+                "file may be tampered or lacks receipt_digest field"
+            )
         return self
 
     def add_replay_determinism(self, score: float) -> "AgentTrustScoreBuilder":
@@ -198,8 +321,15 @@ class AgentTrustScoreBuilder:
         return self
 
     def build(self) -> AgentTrustScore:
-        values = list(self._dims.values())
-        overall = _geometric_mean(values)
+        # Only include non-None dimensions in the geometric mean
+        known_values = [v for v in self._dims.values() if v is not None]
+        if known_values:
+            overall: float | None = _geometric_mean(known_values)
+        else:
+            overall = None
+            self._notes.append(
+                "No evidence dimensions present — overall score is unknown (None)"
+            )
         return AgentTrustScore(
             overall=overall,
             breakdown=dict(self._dims),
