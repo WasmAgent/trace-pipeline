@@ -4,6 +4,42 @@
 > permanent DOI, suitable for academic citation alongside or in lieu of
 > an arxiv ID.
 
+> **Note**: DOI will be assigned upon Zenodo upload. The placeholder `10.5281/zenodo.XXXXXXX`
+> throughout this document must be replaced with the real DOI after upload.
+
+## Files included
+
+The following data files are archived in this Zenodo deposit:
+
+| File | Records | Schema | Description |
+|---|---|---|---|
+| `data/smoke/aep-smoke.jsonl` | 5 | aep/v0.1 | Synthetic AEP evidence records |
+| `data/smoke/rollout-smoke.jsonl` | 3 | rollout-wire/v1 | Synthetic rollout wire traces |
+
+## Reproduce with
+
+```bash
+# Validate AEP records against schema and admission criteria
+python -m evomerge validate-aep --input data/smoke/aep-smoke.jsonl
+
+# Generate a full audit report
+python -m evomerge audit-report --aep data/smoke/aep-smoke.jsonl
+
+# Re-generate the smoke dataset from scratch (requires bscode reference deployment)
+python scripts/generate-smoke-data.py --output data/smoke/
+```
+
+## Schema version
+
+| Schema | Version | Source |
+|---|---|---|
+| AEP evidence records | aep/v0.1 | `wasmagent-js/packages/aep/src/types.ts` |
+| Rollout wire traces | rollout-wire/v1 | `wasmagent-js/packages/core/src/ranking/schemas/` |
+
+Both schemas are defined in the `wasmagent-js` repository and are versioned independently.
+AEP v0.2 (in development) will add the `evidence_admission_score` field as a first-class
+top-level attribute; v0.1 records derive the score from `compliance_results`.
+
 ## Why bother
 
 Zenodo (CERN-hosted) gives software releases a permanent DOI without
