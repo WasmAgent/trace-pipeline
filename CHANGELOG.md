@@ -4,7 +4,7 @@ All notable changes to this repository.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — 2026-06-25
+## [Unreleased] — 2026-06-26
 
 ### Added (gap fill — benchmark adapters + cross-framework + trust score)
 
@@ -114,9 +114,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `created_at_ms`. Optional arrays: `actions`, `verifier_results`, `capability_decisions`,
   `input_refs`, `output_refs`.
 
-- **`evomerge/validate/aep.py`** — AEP record validation. `validate_aep_record()` validates
-  a single dict against the JSON schema (graceful fallback if `jsonschema` not installed).
-  `AEPValidationResult` with `evidence_completeness` ratio and `passed` predicate.
+- **`evomerge/validate/aep.py`** — AEP record validation. `validate_aep_record()`
+  validates a single dict against the JSON schema. **As of 2026-06-26, a missing
+  `jsonschema` package raises `ImportError` instead of silently falling back to a
+  two-field structural check** — the earlier silent-fallback path was a security
+  hole (any AEP record passed `validate_aep_record()` in an environment where
+  `jsonschema` failed to import). `AEPValidationResult` retains its
+  `evidence_completeness` ratio and `passed` predicate. When `require_signature=True`,
+  the validator also calls `verify_aep_signature()` against the public key resolved
+  from `WASMAGENT_AEP_PUBKEY_<key_id>` env var via the new `validate/keystore.py`.
   `validate_aep_file()` for JSONL batch validation. `print_aep_report()` for human-readable output.
 
 - **`evomerge/__main__.py` — `validate-aep` subcommand**. Accepts `--input FILE` (JSONL) and

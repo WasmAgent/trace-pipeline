@@ -481,9 +481,9 @@ See also: [`examples/recipe16_full_loop_demo.py`](examples/recipe16_full_loop_de
 
 Demonstrates the complete WasmAgent evidence pipeline in 8 steps with no model, no API key, no external downloads:
 
-1. Build synthetic AEP record (`aep/v0.1`)
-2. Validate with `validate_aep_record()` — checks schema + evidence completeness
-3. Compute `AgentTrustScore` (9-dim geometric mean: task_success, evidence_completeness, policy_compliance, budget_compliance, verifier_agreement, benchmark_trust, supply_chain_integrity, replay_determinism, contamination_resistance)
+1. Build synthetic AEP record (`aep/v0.2`, Ed25519-signed)
+2. Validate with `validate_aep_record(require_signature=True)` — checks schema + Ed25519 signature + evidence completeness
+3. Compute `AgentTrustScore` (geometric mean over up to 12 dimensions: 7 base — task_success, evidence_completeness, policy_compliance, budget_compliance, verifier_agreement, benchmark_trust, supply_chain_integrity — plus 5 optional: replay_determinism, contamination_resistance, tool_misuse_resistance, redaction_quality, runtime_isolation_level)
 4. Classify benchmark exploit surfaces (`eval_trust.exploit_surface`)
 5. Generate Markdown audit report (`generate_audit_report()`)
 6. Build `RunReceipt` (SCITT-style provenance)

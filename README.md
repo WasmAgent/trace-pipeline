@@ -220,7 +220,7 @@ evomerge/
 ├── pipeline/       trace → SFT / DPO / PPO / compliance-SFT converters
 ├── io.py           load_jsonl / write_jsonl / load_rollouts / load_router_records
 ├── export.py       run_export() — full pipeline in one call
-├── validate/       contamination (8-gram Jaccard) + schema structural checks
+├── validate/       contamination (token 8-gram Jaccard with NFKC normalisation + char-level n-gram [5..10] Jaccard fallback at threshold ≥ 0.7) + schema structural checks; Ed25519 AEP signature verification (require_signature=True); registry tamper-detection (signed index.json + append-only events.jsonl)
 ├── synthesize/     TaskSpec templates + SyntheticGenerator (teacher model)
 ├── eval/           EvalHarness (A/B/C/D/E groups), EvalMetrics, stat_bridge
 ├── router/         RouterFeatures, RouterLabel, RouterRuleClassifier
@@ -240,7 +240,7 @@ evomerge/
 | `python -m evomerge synthesize` | generate synthetic samples via teacher model |
 | `python -m evomerge validate-aep` | validate AEP (Agent Evidence Protocol) records |
 | `python -m evomerge lint-benchmark` | anti-reward-hacking exploit surface check on task directory |
-| `python -m evomerge trust-score` | compute AgentTrustScore (9-dim geometric mean) |
+| `python -m evomerge trust-score` | compute AgentTrustScore (geometric mean over up to 12 dimensions: 7 base + 5 optional; see `evomerge/trust_score.py` docstring for the full list). Aggregates the JSONL stream by (trace_id, run_id). |
 | `python -m evomerge audit-report` | generate full Markdown benchmark audit report |
 | `python -m evomerge receipt` | produce SCITT-style run provenance receipt |
 | `python -m evomerge registry-register` | register artifact in Evidence Registry |

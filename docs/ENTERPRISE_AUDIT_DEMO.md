@@ -125,6 +125,19 @@ Expected output (approximate):
 }
 ```
 
+> **Note on the `1.0` values above.** This fixture has no AEP records
+> attached (only `rollout-wire/v1` branches), so `evidence_completeness`
+> and `policy_compliance` show their *no-data baseline* of `1.0` —
+> "there is nothing to be incomplete about." As of 2026-06-26, the
+> trust-score implementation **no longer treats a missing dimension as
+> positive evidence**: when AEP records *are* present but a dimension is
+> empty (e.g., zero capability decisions on a run that should have
+> produced some), that dimension scores `unknown` (excluded from the
+> geometric mean) or `0` rather than `1.0`. A/B-grade thresholds also
+> require a minimum number of attested dimensions, so a fixture like
+> this one — which only populates `task_success` — would not reach
+> grade A under those rules.
+
 **Interpretation:**
 - `overall ≥ 0.9` (grade A) → safe for DPO/PPO training
 - `overall ≥ 0.75` (grade B) → safe for SFT training with review
