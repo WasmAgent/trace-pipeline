@@ -238,3 +238,168 @@ def compute_trust_score(
     if runtime_isolation_level is not None:
         builder.add_runtime_isolation(runtime_isolation_level)
     return builder.build()
+
+
+# Required AEP top-level fields used for schema validity check
+_AEP_REQUIRED_FIELDS = (
+    "schema_version",
+    "run_id",
+    "model_id",
+    "repo_commit",
+    "tool_manifest_digest",
+    "actions",
+    "capability_decisions",
+    "verifier_results",
+    "created_at_ms",
+)
+
+
+def compute_calibrated_trust_score(aep_record: dict[str, Any]) -> dict[str, Any]:
+    """Compute calibrated trust score with three focused dimensions.
+
+    Assesses an AEP record across three complementary axes and returns a
+    composite score suitable for downstream training-data filtering.
+
+    Dimensions:
+      evidence_health      — Is the AEP record complete and well-formed?
+                             Checks required field presence, non-empty actions
+                             list, and evidence coverage on state-changing
+                             actions (result_digest or evidence_refs).
+
+      policy_risk          — Are there policy violations or suspicious
+                             decisions? Penalised by deny decisions in
+                             capability_decisions and by state-changing
+                             actions that lack any evidence (missing digests
+                             treated as an integrity risk). Score is
+                             0 = high risk, 1 = no risk.
+
+      training_eligibility — Is this record suitable for training data?
+                             Combines verifier pass-rate, evidence completeness
+                             on state-changing actions, and provenance signals
+                             (repo_commit present, tool_manifest_digest
+                             present).
+
+    Composite formula (weighted average):
+        composite = evidence_health * 0.35
+                  + policy_risk     * 0.35
+                  + training_eligibility * 0.30
+
+    Labels:
+        composite >= 0.8  → "high_trust"
+        composite >= 0.6  → "medium_trust"
+        composite >= 0.4  → "low_trust"
+        composite <  0.4  → "untrusted"
+
+    NOTE: This score is for evidence health and training eligibility
+    assessment. It is NOT a compliance certification and does NOT claim
+    to satisfy EU AI Act / ISO 42001 / NIST requirements.
+
+    Args:
+        aep_record: Raw AEP record dict (as produced by AEPEmitter).
+
+    Returns:
+        Dict with keys: evidence_health, policy_risk,
+        training_eligibility, composite, label.
+    """
+    actions: list[dict] = aep_record.get("actions") or []
+    cap_decisions: list[dict] = aep_record.get("capability_decisions") or []
+    verifier_results: list[dict] = aep_record.get("verifier_results") or []
+
+    # ------------------------------------------------------------------
+    # 1. evidence_health
+    # ------------------------------------------------------------------
+    # Schema validity: all required fields present
+    missing_fields = [f for f in _AEP_REQUIRED_FIELDS if f not in aep_record]
+    schema_valid = 1.0 if not missing_fields else max(
+        0.0, 1.0 - len(missing_fields) / len(_AEP_REQUIRED_FIELDS)
+    )
+
+    # Completeness: record has at least one action
+    has_actions = 1.0 if actions else 0.0
+
+    # Evidence coverage: state-changing actions with result_digest or evidence_refs
+    sc_actions = [a for a in actions if a.get("state_changing")]
+    if sc_actions:
+        evidenced_count = sum(
+            1 for a in sc_actions
+            if a.get("result_digest") or a.get("evidence_refs")
+        )
+        evidence_coverage = evidenced_count / len(sc_actions)
+    else:
+        evidence_coverage = 1.0  # no state-changing actions → no gap
+
+    evidence_health = (schema_valid * 0.4 + has_actions * 0.3 + evidence_coverage * 0.3)
+
+    # ------------------------------------------------------------------
+    # 2. policy_risk  (0 = high risk, 1 = no risk)
+    # ------------------------------------------------------------------
+    # Penalise deny decisions
+    if cap_decisions:
+        deny_count = sum(1 for d in cap_decisions if d.get("decision") == "deny")
+        deny_penalty = deny_count / len(cap_decisions)
+    else:
+        deny_penalty = 0.0
+
+    # Penalise state-changing actions without evidence (integrity risk)
+    if sc_actions:
+        unevidenced_count = len(sc_actions) - (
+            sum(1 for a in sc_actions if a.get("result_digest") or a.get("evidence_refs"))
+        )
+        digest_penalty = unevidenced_count / len(sc_actions)
+    else:
+        digest_penalty = 0.0
+
+    # Combine penalties with equal weight; clamp to [0, 1]
+    policy_risk = max(0.0, 1.0 - (deny_penalty * 0.6 + digest_penalty * 0.4))
+
+    # ------------------------------------------------------------------
+    # 3. training_eligibility
+    # ------------------------------------------------------------------
+    # Verifier pass-rate
+    if verifier_results:
+        passed_count = sum(1 for v in verifier_results if v.get("passed", False))
+        verifier_pass_rate = passed_count / len(verifier_results)
+    else:
+        verifier_pass_rate = 0.5  # unknown — neutral penalty
+
+    # Evidence completeness (reuse from above)
+    eligibility_evidence = evidence_coverage
+
+    # Provenance signals: repo_commit and tool_manifest_digest present and non-empty
+    provenance_score = (
+        (1.0 if aep_record.get("repo_commit") else 0.0) * 0.5
+        + (1.0 if aep_record.get("tool_manifest_digest") else 0.0) * 0.5
+    )
+
+    training_eligibility = (
+        verifier_pass_rate * 0.45
+        + eligibility_evidence * 0.30
+        + provenance_score * 0.25
+    )
+
+    # ------------------------------------------------------------------
+    # Composite
+    # ------------------------------------------------------------------
+    composite = (
+        evidence_health * 0.35
+        + policy_risk * 0.35
+        + training_eligibility * 0.30
+    )
+    composite = max(0.0, min(1.0, composite))
+
+    if composite >= 0.8:
+        label = "high_trust"
+    elif composite >= 0.6:
+        label = "medium_trust"
+    elif composite >= 0.4:
+        label = "low_trust"
+    else:
+        label = "untrusted"
+
+    return {
+        "evidence_health": round(evidence_health, 4),
+        "policy_risk": round(policy_risk, 4),
+        "training_eligibility": round(training_eligibility, 4),
+        "composite": round(composite, 4),
+        "label": label,
+    }
