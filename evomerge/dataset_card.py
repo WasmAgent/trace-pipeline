@@ -112,9 +112,6 @@ def generate_dataset_card(manifest: dict, *, name: str, date: str = "") -> str:
     return card
 
 
-__all__ = ["generate_dataset_card", "TraceCard", "generate_trace_card"]
-
-
 # ── Trace Card ────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -199,3 +196,137 @@ def generate_trace_card(card: TraceCard, *, date: str = "") -> str:
 
 {excluded}
 """
+
+
+# ── AEP Dataset Card ──────────────────────────────────────────────────────────
+
+@dataclass
+class AEPDatasetCardConfig:
+    """Configuration for generating an AEP dataset card."""
+    title: str = "WasmAgent AEP Dataset"
+    version: str = "0.1.0"
+    license_id: str = "Apache-2.0"
+    aep_files: list = field(default_factory=list)
+    consent_receipt_paths: list = field(default_factory=list)
+    redaction_version: str = "wasmagent/pii-redact/v1"
+    provenance_source: str = "wasmagent-js"
+    admission_criteria: str = "Evidence Admission Score >= 0.6"
+
+
+def generate_aep_dataset_card(config: AEPDatasetCardConfig, *, date: str = "") -> str:
+    """Render a Markdown AEP dataset card from an AEPDatasetCardConfig.
+
+    Args:
+        config: AEPDatasetCardConfig instance describing the dataset.
+        date: ISO date string YYYY-MM-DD. Defaults to today.
+
+    Returns:
+        Rendered Markdown string.
+    """
+    import json
+    import time as _time
+    from pathlib import Path as _Path
+
+    if not date:
+        date = _time.strftime("%Y-%m-%d")
+
+    # Gather stats from AEP JSONL files
+    total_records = 0
+    has_signature = 0
+    has_policy_decisions = 0
+    has_verifier_results = 0
+
+    for aep_file in config.aep_files:
+        try:
+            p = _Path(aep_file)
+            if not p.exists():
+                continue
+            for line in p.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                total_records += 1
+                if record.get("signature"):
+                    has_signature += 1
+                if record.get("policy_decisions"):
+                    has_policy_decisions += 1
+                if record.get("verifier_results"):
+                    has_verifier_results += 1
+        except OSError:
+            continue
+
+    consent_list = "\n".join(
+        f"- `{p}`" for p in config.consent_receipt_paths
+    ) or "- _(none provided)_"
+
+    return f"""# {config.title}
+
+> Generated {date}
+
+## Overview
+
+| Field | Value |
+|---|---|
+| Version | {config.version} |
+| License | {config.license_id} |
+| Provenance | {config.provenance_source} |
+| Redaction | {config.redaction_version} |
+| Schema | aep/v0.1 |
+
+## Evidence Quality
+
+Statistics derived from {len(config.aep_files)} AEP file(s) ({total_records} total records).
+
+| Metric | Count |
+|---|---|
+| Total records | {total_records} |
+| Records with signature | {has_signature} |
+| Records with policy decisions | {has_policy_decisions} |
+| Records with verifier results | {has_verifier_results} |
+
+## Consent & Privacy
+
+- **Consent mechanism**: explicit opt-in via run receipt
+- **Redaction profile**: {config.redaction_version}
+- **Deletion path**: remove the corresponding AEP JSONL file and re-export
+
+Consent receipts:
+
+{consent_list}
+
+## Admission Criteria
+
+{config.admission_criteria}
+
+| Category | Description |
+|---|---|
+| Evidence Admission Score | Composite score combining verifier pass rate and policy compliance |
+| Verifier pass | At least one verifier result with `passed: true` |
+| Policy compliance | All policy decisions resolve to `allow` |
+| PII redaction | Record passes the configured redaction profile scan |
+| Schema validity | Record conforms to `aep/v0.1` schema |
+| Deduplication | Record fingerprint is unique within the export window |
+
+## Contamination Risk
+
+- AEP records are derived from live agent runs; prompt text may overlap with public benchmarks.
+- Deduplication by content hash is applied at export time.
+- Benchmark-split leakage (e.g. IFEval) is mitigated by holding out evaluation prompts from the training export.
+
+## License
+
+{config.license_id} — see [LICENSE](../../LICENSE) for full terms.
+"""
+
+
+__all__ = [
+    "generate_dataset_card",
+    "TraceCard",
+    "generate_trace_card",
+    "AEPDatasetCardConfig",
+    "generate_aep_dataset_card",
+]

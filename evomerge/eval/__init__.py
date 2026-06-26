@@ -20,6 +20,12 @@ from evomerge.eval.stat_bridge import (
     compare_all_groups,
     paired_significance,
 )
+from evomerge.eval.verifier_audit import (
+    VerifierAuditFinding,
+    VerifierAuditResult,
+    audit_aep_verifiers,
+    audit_verifier_results,
+)
 
 __all__ = [
     "EvalConfig",
@@ -29,6 +35,10 @@ __all__ = [
     "EvalRecord",
     "EvalReport",
     "SignificanceReport",
+    "VerifierAuditFinding",
+    "VerifierAuditResult",
+    "audit_aep_verifiers",
+    "audit_verifier_results",
     "compare_all_groups",
     "compute_metrics",
     "paired_significance",
