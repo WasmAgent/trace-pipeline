@@ -33,6 +33,7 @@ train  = ["scikit-learn>=1.3", "joblib>=1.3", "peft>=0.10", "trl>=0.8", "transfo
 
 [project.scripts]
 evomerge = "evomerge.__main__:main"
+wasmagent-trace = "evomerge.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/WasmAgent/trace-pipeline"
