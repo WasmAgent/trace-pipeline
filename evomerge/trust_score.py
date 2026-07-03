@@ -91,6 +91,25 @@ class AgentTrustScore:
             "notes": self.notes,
         }
 
+    def to_json(self) -> dict:
+        """Return a versioned JSON-serialisable dict for downstream consumption.
+
+        Adds ``schema_version`` and ``known_dimensions`` on top of the fields
+        already present in :meth:`to_dict`.  The output conforms to the
+        ``schemas/trust-score.schema.json`` contract.
+        """
+        return {
+            "schema_version": "trust-score/v1",
+            "overall": round(self.overall, 4) if self.overall is not None else None,
+            "grade": self.grade,
+            "breakdown": {
+                k: round(v, 4) if v is not None else None
+                for k, v in self.breakdown.items()
+            },
+            "known_dimensions": self._known_dim_count,
+            "notes": self.notes,
+        }
+
 
 def _geometric_mean(values: list[float]) -> float:
     """Geometric mean of a non-empty list of positive floats.
