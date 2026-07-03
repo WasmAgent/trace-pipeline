@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "trust-score/v1",
+  "title": "AgentTrustScore",
+  "description": "Stable JSON output contract for AgentTrustScore.to_json() — composite trustworthiness metric for an agent run.",
+  "type": "object",
+  "required": ["schema_version", "overall", "grade", "breakdown", "known_dimensions", "notes"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trust-score/v1",
+      "description": "Schema version identifier for this payload format."
+    },
+    "overall": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Geometric mean of all known (non-None) dimensions, rounded to 4 decimal places. Null when no evidence dimensions are present."
+    },
+    "grade": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "F"],
+      "description": "Letter grade derived from overall score and number of known dimensions."
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Per-dimension scores. Keys are dimension names (e.g. task_success, evidence_completeness). Values are numbers in [0,1] rounded to 4 decimals, or null if the dimension is unknown.",
+      "additionalProperties": {
+        "type": ["number", "null"],
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "known_dimensions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of dimensions with a real (non-null) score."
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable notes about the scoring (e.g. missing evidence, unverified receipt)."
+    }
+  },
+  "additionalProperties": false
+}
