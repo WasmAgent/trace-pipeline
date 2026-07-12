@@ -296,14 +296,19 @@ class TestDpoEvidenceGate:
         records = to_dpo_records(branches, require_attested_evidence=True)
         assert records == []
 
-    def test_no_verifier_results_rejected(self):
-        """Branches with no verifier_results field are rejected."""
+    def test_no_verifier_results_implicitly_trusted(self):
+        """Branches with no verifier_results field are implicitly trusted (Issue #4).
+
+        When a branch has no verifier_results at all, it comes from a pipeline
+        that doesn't yet support attestation. These are treated as trusted and
+        can still form DPO pairs.
+        """
         branches = [
             _branch(branch_index=0, score=1, status="pass", verifier_results=self._no_vr()),
             _branch(branch_index=1, score=0, status="fail", verifier_results=self._no_vr()),
         ]
         records = to_dpo_records(branches, require_attested_evidence=True)
-        assert records == []
+        assert len(records) == 1, "Branches without verifier_results should be implicitly trusted"
 
     def test_gate_disabled_accepts_unattested(self):
         """When gate is disabled, unattested branches still produce DPO pairs."""

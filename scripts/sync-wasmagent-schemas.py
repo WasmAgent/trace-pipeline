@@ -35,6 +35,7 @@ REQUIRED_FIELD_COVERAGE = {
     "rollout-wire.schema.json": {
         "schema_version", "rollout_id", "task", "branch_index",
         "temperature", "session_id", "tool_call_sequence", "final_answer",
+        "seed",
     },
 }
 
@@ -72,10 +73,21 @@ def sync(wasmagent_js: Path, check_only: bool = False) -> int:
 
         if local_path.exists():
             local = json.loads(local_path.read_text())
-            # Compare only properties/required — ignore $id/$schema which differ
-            canonical_props = canonical.get("properties", {})
+            # Resolve oneOf/$defs structure: find RolloutBranchRecord definition
+            if "properties" not in canonical and "$defs" in canonical:
+                # Schema uses oneOf + $defs structure — find the primary record
+                defs = canonical.get("$defs", {})
+                if "RolloutBranchRecord" in defs:
+                    canonical_resolved = defs["RolloutBranchRecord"]
+                else:
+                    # Fall back to first definition
+                    canonical_resolved = next(iter(defs.values()), {})
+            else:
+                canonical_resolved = canonical
+
+            canonical_props = canonical_resolved.get("properties", {})
             local_props     = local.get("properties", {})
-            canonical_req   = set(canonical.get("required", []))
+            canonical_req   = set(canonical_resolved.get("required", []))
             local_req       = set(local.get("required", []))
 
             missing_props = set(canonical_props) - set(local_props)

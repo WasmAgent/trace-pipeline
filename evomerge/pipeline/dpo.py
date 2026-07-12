@@ -37,7 +37,7 @@ def _ngram_hash(text: str) -> str:
 
 
 def _is_attested(branch: RolloutBranchRecord) -> bool:
-    """Return True if at least one verifier result is properly attested.
+    """Return True if the branch is considered attested for DPO pairing.
 
     Attestation requires:
       - ``evidence_source == "attested"`` on the verifier entry, AND
@@ -45,11 +45,21 @@ def _is_attested(branch: RolloutBranchRecord) -> bool:
 
     The ``verifier_results`` field is carried in ``branch.model_extra`` when
     the branch was deserialized from a richer JSON payload that includes it.
-    If the field is absent entirely the branch is considered unattested.
+
+    If no verifier_results are present at all, the branch is from a pipeline
+    that doesn't yet support attestation — treat as implicitly trusted
+    (the provenance gate handles security instead).
     """
     # RolloutBranchRecord stores extra fields in model_extra (Pydantic v2)
     extra: dict[str, Any] = getattr(branch, "model_extra", None) or {}
     verifier_results: list[dict] = extra.get("verifier_results") or []
+
+    # If no verifier_results present at all, the branch is from a pipeline
+    # that doesn't yet support attestation — treat as implicitly trusted
+    # (the provenance gate handles security instead).
+    if not verifier_results:
+        return True
+
     for entry in verifier_results:
         if entry.get("evidence_source") == "attested":
             signer = entry.get("signer") or {}

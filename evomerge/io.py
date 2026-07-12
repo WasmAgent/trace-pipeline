@@ -83,9 +83,38 @@ def load_router_records(path: str | Path):
 
 
 def load_rollouts(path: str | Path):
-    """Convenience: load RolloutBranchRecord list from JSONL."""
+    """Convenience: load RolloutBranchRecord list from JSONL.
+
+    Gracefully skips RolloutTreeRecord entries (which carry fork topology
+    but are not branch-level records).
+    """
+    import json as _json
+    import logging
+
+    _log = logging.getLogger(__name__)
     from evomerge.schemas.rollout import RolloutBranchRecord
-    return load_jsonl(path, RolloutBranchRecord)
+
+    records: list[RolloutBranchRecord] = []
+    with open(path) as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                obj = _json.loads(line)
+            except Exception as exc:
+                raise ValueError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
+            # Skip tree records (they have fork_map but no branch_index)
+            if "fork_map" in obj and "branch_index" not in obj:
+                _log.info(
+                    "load_rollouts: skipping RolloutTreeRecord at %s:%d", path, lineno
+                )
+                continue
+            try:
+                records.append(RolloutBranchRecord.model_validate(obj))
+            except Exception as exc:
+                raise ValueError(f"{path}:{lineno}: {exc}") from exc
+    return records
 
 
 def load_compliance_records(path: str | Path):

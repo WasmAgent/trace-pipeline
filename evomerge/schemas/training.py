@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-LossWeightTokens = Literal["default", "recovery", "state_summary"]
+LossWeightTokens = Literal["default", "recovery", "state_summary", "high_value"]
 
 
 class Message(BaseModel):
@@ -29,6 +29,11 @@ class Provenance(BaseModel):
     task_hash: str | None = None
 
 
+class TurnAnnotation(BaseModel):
+    turn_index: int
+    loss_weight_tokens: LossWeightTokens = "default"
+
+
 class SftTrainingRecord(BaseModel):
     """Full conversation for SFT; the last assistant turn is the training target."""
 
@@ -38,6 +43,7 @@ class SftTrainingRecord(BaseModel):
         "final_answer", "repair_patch", "tool_call", "next_action", "escalation"
     ]
     loss_weight_tokens: LossWeightTokens = "default"
+    loss_weight_annotations: list[TurnAnnotation] | None = None
     provenance: Provenance
 
 
@@ -55,6 +61,7 @@ class DpoTrainingRecord(BaseModel):
     chosen: str
     rejected: str
     loss_weight_tokens: LossWeightTokens = "default"
+    loss_weight_annotations: list[TurnAnnotation] | None = None
     provenance: Provenance
 
 
@@ -65,6 +72,7 @@ class PpoTrainingRecord(BaseModel):
     messages: list[Message]
     reward: float
     loss_weight_tokens: LossWeightTokens = "default"
+    loss_weight_annotations: list[TurnAnnotation] | None = None
     provenance: Provenance
 
 
@@ -75,4 +83,5 @@ __all__ = [
     "PpoTrainingRecord",
     "Provenance",
     "SftTrainingRecord",
+    "TurnAnnotation",
 ]
