@@ -75,6 +75,20 @@ trace-pipeline
   consumes → ranked rollout JSONL → SFT / DPO / PPO records
   consumes → ComplianceEvalRecord JSONL → compliance SFT / DPO / router records
   validates → schema parity, contamination, provenance
+
+Schema authority:
+  wasmagent-js/packages/core/src/ranking/RolloutExporter.ts  (defines wire types)
+  wasmagent-js/packages/core/src/ranking/schemas/            (JSON Schema SSOT)
+
+  Downstream consumers in trace-pipeline:
+    evomerge/pipeline/sft.py      — rollout → SFT records
+    evomerge/pipeline/dpo.py      — rollout → DPO records
+    evomerge/pipeline/ppo.py      — rollout → PPO records
+    evomerge/schemas/rollout.py   — Pydantic mirror of rollout-wire.schema.json
+    evomerge/schemas/training.py  — Pydantic mirror of training record schemas
+
+  Note: upstream supports fork-level DPO via RolloutTreeExporter.toDpoRecordWithForkContext()
+  (emits RolloutTreeRecord). Downstream currently skips these records gracefully.
 ```
 
 **Schema SSOT locations:**

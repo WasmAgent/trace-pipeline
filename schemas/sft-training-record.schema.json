@@ -112,6 +112,30 @@
       ],
       "title": "Provenance",
       "type": "object"
+    },
+    "TurnAnnotation": {
+      "properties": {
+        "turn_index": {
+          "title": "Turn Index",
+          "type": "integer"
+        },
+        "loss_weight_tokens": {
+          "default": "default",
+          "enum": [
+            "default",
+            "recovery",
+            "state_summary",
+            "high_value"
+          ],
+          "title": "Loss Weight Tokens",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turn_index"
+      ],
+      "title": "TurnAnnotation",
+      "type": "object"
     }
   },
   "description": "Supervised fine-tuning record. schema_version: sft/v1.",
@@ -145,10 +169,26 @@
       "enum": [
         "default",
         "recovery",
-        "state_summary"
+        "state_summary",
+        "high_value"
       ],
       "title": "Loss Weight Tokens",
       "type": "string"
+    },
+    "loss_weight_annotations": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/TurnAnnotation"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Loss Weight Annotations"
     },
     "provenance": {
       "$ref": "#/$defs/Provenance"

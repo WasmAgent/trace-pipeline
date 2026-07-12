@@ -77,6 +77,7 @@
       "type": "object"
     }
   },
+  "additionalProperties": true,
   "description": "One branch produced by wasmagent-js RolloutForkRunner. Schema version: rollout-wire/v1.",
   "properties": {
     "schema_version": {
@@ -107,7 +108,15 @@
     },
     "tool_call_sequence": {
       "items": {
-        "$ref": "#/$defs/ToolCallEntry"
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ToolCallEntry"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        ]
       },
       "title": "Tool Call Sequence",
       "type": "array"
@@ -126,6 +135,18 @@
         }
       ],
       "default": null
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Seed"
     },
     "objective_score": {
       "default": 0,
