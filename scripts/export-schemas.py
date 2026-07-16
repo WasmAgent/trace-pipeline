@@ -92,6 +92,11 @@ def _load_class(module_path: str, class_name: str):
     return getattr(mod, class_name)
 
 
+UPSTREAM_REQUIRED_OVERRIDES = {
+    "rollout-wire.schema.json": ["tool_call_sequence"],
+}
+
+
 def generate_schemas(out_dir: Path) -> list[tuple[str, dict]]:
     """Generate JSON Schema dicts for all targets."""
     results = []
@@ -101,6 +106,9 @@ def generate_schemas(out_dir: Path) -> list[tuple[str, dict]]:
         schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
         schema["$id"] = BASE_URI + filename
         schema["description"] = description
+        for field in UPSTREAM_REQUIRED_OVERRIDES.get(filename, []):
+            if field not in schema.get("required", []):
+                schema.setdefault("required", []).append(field)
         results.append((filename, schema))
     return results
 

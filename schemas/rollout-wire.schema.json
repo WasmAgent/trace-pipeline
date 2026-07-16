@@ -184,8 +184,8 @@
     "branch_index",
     "temperature",
     "session_id",
-    "tool_call_sequence",
-    "final_answer"
+    "final_answer",
+    "tool_call_sequence"
   ],
   "title": "RolloutBranchRecord",
   "type": "object",
