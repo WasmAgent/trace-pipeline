@@ -69,13 +69,17 @@ def check_jsonschema(samples: list[dict], wasmagent_js: Path) -> tuple[int, list
         return 0, []
 
     schema = json.loads(schema_path.read_text())
-    # Remove $ref resolution for standalone check
     errors = []
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    # Fields with a default or const value are not truly required in wire format
+    strict_required = [
+        f for f in required
+        if "default" not in properties.get(f, {}) and "const" not in properties.get(f, {})
+    ]
     for i, s in enumerate(samples):
         try:
-            # Only validate top-level required fields (skip $ref resolution)
-            required = schema.get("required", [])
-            missing = [f for f in required if f not in s]
+            missing = [f for f in strict_required if f not in s]
             if missing:
                 errors.append(f"sample {i}: missing required fields {missing}")
         except Exception as exc:

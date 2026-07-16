@@ -16,7 +16,7 @@ from evomerge.schemas.compliance import (
     ViolationStage,
 )
 from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
-from evomerge.schemas.training import TurnAnnotation, LossWeightTokens
+from evomerge.schemas.training import TurnAnnotation
 from evomerge.pipeline.sft import to_sft_records, _normalize_tool_sequence, _collapse_annotations
 from evomerge.pipeline.dpo import to_dpo_records
 from evomerge.pipeline.ppo import to_ppo_records
