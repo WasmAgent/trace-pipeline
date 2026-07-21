@@ -69,6 +69,29 @@ v0.2 adds: `parent_action_id`, `causal_chain_id`, `scope_lease_id`, `input_taint
 
 Run any recipe: `python3 examples/recipeNN_*.py`
 
+## Repository Boundaries
+
+**This repository owns:**
+- AEP evidence validation (`evomerge/validate/aep.py`)
+- Evidence Admission Score and admission gate (`evomerge/validate/quality_gate.py`)
+- Benchmark contamination statistics — dataset-level (paired McNemar, T0v2 triage, `eval_trust`)
+- Calibrated trust score (`evomerge/trust_score.py`)
+- Audit report generation (`evomerge/audit_report.py`)
+- SFT / DPO / router record export (`evomerge/export/`)
+- Benchmark adapters: BFCL, τ-bench, AgentHarm
+- `eval_trust` paper companion
+
+**Other repositories own — do not duplicate here:**
+
+| Capability | Owner |
+|---|---|
+| AEP schema definition and versioning | `wasmagent-js` (`@wasmagent/aep`) |
+| Runtime evidence collection (MCP firewall, AEP emitter) | `wasmagent-js` |
+| Enterprise audit report, regulatory mapping | `open-agent-audit` |
+| AgentBOM / MCP Posture / Trust Passport specifications | `agent-trust-infra` |
+| Per-task contamination likelihood annotation (FAEP-level) | `fresharena` (issue #96) |
+| Dynamic evaluation protocol | `fresharena` |
+
 ## Schema governance
 
 Schemas in `schemas/` are the SSOT. Run `python scripts/export-schemas.py --check` to verify Pydantic models match. Nightly CI checks parity against wasmagent-js main.

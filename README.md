@@ -5,6 +5,8 @@
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
 [![Paper PDF](https://img.shields.io/badge/paper-PDF-red.svg)](papers/eval_trust/draft.pdf)
 
+> **Status:** Beta — evidence admission backend for measurement trust, AEP validation, benchmark claim audit, and training-data gate.
+
 **Measurement trust and trace-to-training backend for WasmAgent.**
 
 **Install:** `pip install evomerge`
