@@ -433,7 +433,7 @@ def compute_admission_score(
 
     # 1. Schema validity
     schema_ver = aep_record.get("schema_version", "")
-    if schema_ver not in ("aep/v0.1", "aep/v0.2"):
+    if schema_ver not in ("aep/v0.1", "aep/v0.2", "aep/v0.3", "aep/v0.4"):
         return {"score": 0.0, "category": "reject", "reasons": ["invalid schema_version"], "dimensions": {}}
     dims["schema_validity"] = 1.0
 
@@ -470,6 +470,15 @@ def compute_admission_score(
     if not has_digest:
         reasons.append("missing tool_manifest_digest — contamination risk elevated")
 
+    # 7. Recording mode bonus (v0.3+)
+    recording_mode = aep_record.get("recording_mode")
+    recording_mode_bonus = 0.0
+    if recording_mode == "full":
+        recording_mode_bonus = 0.05
+    elif recording_mode == "delta":
+        recording_mode_bonus = 0.02
+    # "validation" or absent/null → no bonus
+
     # Weighted score
     weights = {
         "schema_validity": 0.20,
@@ -480,6 +489,7 @@ def compute_admission_score(
         "contamination_risk": 0.10,
     }
     score = sum(dims.get(k, 0.0) * w for k, w in weights.items())
+    score = min(1.0, score + recording_mode_bonus)
 
     # Routing
     if score < 0.4:

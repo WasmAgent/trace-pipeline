@@ -6,7 +6,7 @@
   "type": "object",
   "required": ["schema_version", "run_id", "created_at_ms"],
   "properties": {
-    "schema_version": { "type": "string", "enum": ["aep/v0.1", "aep/v0.2"] },
+    "schema_version": { "type": "string", "enum": ["aep/v0.1", "aep/v0.2", "aep/v0.3", "aep/v0.4"] },
     "run_id": { "type": "string" },
     "trace_id": { "type": "string" },
     "parent_trace_id": { "type": ["string", "null"] },
@@ -172,6 +172,22 @@
         "bundle": { "type": "object" },
         "transparency_log_ref": { "type": "string" }
       }
+    },
+    "recording_mode": {
+      "type": "string",
+      "description": "v0.3+: Recording fidelity mode (full, delta, validation)"
+    },
+    "side_effect_class": {
+      "type": "string",
+      "description": "v0.3+: Classification of side effects produced by the run"
+    },
+    "argument_drift": {
+      "type": "object",
+      "description": "v0.3+: Detected argument drift metadata"
+    },
+    "dsse_envelope": {
+      "type": "object",
+      "description": "v0.4+: Dead Simple Signing Envelope wrapping the record"
     }
   }
 }
