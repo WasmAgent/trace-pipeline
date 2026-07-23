@@ -85,7 +85,8 @@ Run any recipe: `python3 examples/recipeNN_*.py`
 
 | Capability | Owner |
 |---|---|
-| AEP schema definition and versioning | `wasmagent-js` (`@wasmagent/aep`) |
+| AEP + compliance **schema definitions** | `wasmagent-protocol` (`@wasmagent/protocol`) |
+| AEP evidence **emission** at runtime | `wasmagent-js` (`@wasmagent/aep`) |
 | Runtime evidence collection (MCP firewall, AEP emitter) | `wasmagent-js` |
 | Enterprise audit report, regulatory mapping | `open-agent-audit` |
 | AgentBOM / MCP Posture / Trust Passport specifications | `agent-trust-infra` |
@@ -94,4 +95,4 @@ Run any recipe: `python3 examples/recipeNN_*.py`
 
 ## Schema governance
 
-Schemas in `schemas/` are the SSOT. Run `python scripts/export-schemas.py --check` to verify Pydantic models match. Nightly CI checks parity against wasmagent-js main.
+Cross-repo AEP/compliance schemas are canonical in `wasmagent-protocol` (consume `wasmagent-protocol` on PyPI; see issue #17 for the strip). Repo-private `*-training-record` schemas in `schemas/` remain the SSOT for training output; run `python scripts/export-schemas.py --check` to verify Pydantic models match those.
