@@ -1,0 +1,13 @@
+commands:
+  - name: pip-install
+    cmd: "if [ -d .venv ]; then .venv/bin/pip install -e \".[dev]\" -q 2>/dev/null || .venv/bin/pip install -e . -q 2>/dev/null || true; else pip install -e \".[dev]\" -q 2>/dev/null || pip install -e . -q 2>/dev/null || true; fi"
+    timeout: 3m
+    level: 1
+  - name: ruff
+    cmd: "if [ -d .venv ] && [ -x .venv/bin/ruff ]; then .venv/bin/ruff check . ; else ruff check . ; fi"
+    timeout: 3m
+    level: 2
+  - name: pytest
+    cmd: "if [ -d .venv ]; then .venv/bin/pytest -x -q 2>/dev/null || .venv/bin/pytest tests/ -x -q; else pytest -x -q 2>/dev/null || pytest tests/ -x -q; fi"
+    timeout: 5m
+    level: 3
