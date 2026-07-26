@@ -26,6 +26,9 @@ dependencies = [
     "pydantic>=2.0",
     "jsonschema>=4.0",
     "cryptography>=41.0",
+    # Canonical AEP + compliance JSON Schemas. SSOT = WasmAgent/wasmagent-protocol;
+    # this repo consumes them via the package and never forks the JSON.
+    "wasmagent-protocol>=0.1.5",
 ]
 
 [project.optional-dependencies]
