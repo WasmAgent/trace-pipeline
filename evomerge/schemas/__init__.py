@@ -1,7 +1,6 @@
-from evomerge.schemas.rollout import BuildResult, RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.compliance import (
-    ComplianceEvalRecord,
     ComplianceError,
+    ComplianceEvalRecord,
     ConstraintCategory,
     ConstraintIR,
     ConstraintLevel,
@@ -18,6 +17,7 @@ from evomerge.schemas.compliance import (
     ToolPolicy,
     ViolationStage,
 )
+from evomerge.schemas.rollout import BuildResult, RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.training import (
     DpoTrainingRecord,
     Message,

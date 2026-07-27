@@ -6,12 +6,12 @@ Provides:
   - SyntheticGenerator: calls a teacher-model API to produce SFT/DPO records
     from TaskSpec templates without requiring real wasmagent-js run data.
 """
+from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
 from evomerge.synthesize.templates import (
     TaskType,
     builtin_templates,
     make_task_spec,
 )
-from evomerge.synthesize.generator import SyntheticGenerator, GenerationConfig
 
 __all__ = [
     "GenerationConfig",

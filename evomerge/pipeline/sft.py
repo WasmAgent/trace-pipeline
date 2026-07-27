@@ -7,11 +7,10 @@ sequence so the model sees exactly what the agent saw.
 from __future__ import annotations
 
 import hashlib
-from typing import Sequence
+from collections.abc import Sequence
 
 from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.training import Message, Provenance, SftTrainingRecord
-
 
 _PRIORITY = {"high_value": 3, "recovery": 2, "state_summary": 1, "default": 0}
 

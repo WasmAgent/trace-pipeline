@@ -10,9 +10,9 @@ Label is derived from the outcome of a completed EvalRecord.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Sequence
 
 from evomerge.eval.metrics import EvalRecord
 from evomerge.router.features import RouterFeatures, feature_from_record
@@ -47,7 +47,7 @@ class RouterRecord:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RouterRecord":
+    def from_dict(cls, d: dict) -> RouterRecord:
         from dataclasses import fields as dc_fields
         feat_data = d["features"]
         feat = RouterFeatures(**{f.name: feat_data[f.name] for f in dc_fields(RouterFeatures)})

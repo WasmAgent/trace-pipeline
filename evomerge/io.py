@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence, Type, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
 
 
-def load_jsonl(path: str | Path, model: Type[T]) -> list[T]:
+def load_jsonl(path: str | Path, model: type[T]) -> list[T]:
     """Parse a JSONL file into validated Pydantic records.
 
     Skips blank lines and comment lines starting with '#'.

@@ -1,9 +1,6 @@
 """Tests for evomerge.synthesize.generator (with a mock chat_fn)."""
 from __future__ import annotations
 
-
-from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
-from evomerge.synthesize.templates import TaskType, builtin_templates, make_task_spec
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -13,6 +10,8 @@ from evomerge.schemas.compliance import (
     ViolationStage,
 )
 from evomerge.schemas.training import DpoTrainingRecord, SftTrainingRecord
+from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
+from evomerge.synthesize.templates import TaskType, builtin_templates, make_task_spec
 
 
 def _echo_chat(messages: list[dict]) -> str:

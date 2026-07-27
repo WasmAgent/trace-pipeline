@@ -2,7 +2,9 @@
 Reference: https://a2a-protocol.org/latest/
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class A2AMessage:

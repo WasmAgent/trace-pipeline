@@ -1,7 +1,6 @@
 """Tests for evomerge.security.mcp — McpSecurityEvalRecord schema."""
 from __future__ import annotations
 
-
 from evomerge.security.mcp import (
     FirewallDecision,
     McpSecurityEvalRecord,

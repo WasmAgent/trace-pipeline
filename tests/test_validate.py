@@ -1,9 +1,6 @@
 """Tests for evomerge.validate (contamination + schema_check)."""
 from __future__ import annotations
 
-
-from evomerge.validate.contamination import check_contamination
-from evomerge.validate.schema_check import validate_training_record
 from evomerge.schemas.training import (
     DpoTrainingRecord,
     Message,
@@ -11,6 +8,8 @@ from evomerge.schemas.training import (
     Provenance,
     SftTrainingRecord,
 )
+from evomerge.validate.contamination import check_contamination
+from evomerge.validate.schema_check import validate_training_record
 
 
 def _prov():

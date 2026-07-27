@@ -1,5 +1,6 @@
 from evomerge.dataset_card import TraceCard, generate_trace_card
 
+
 def test_generate_trace_card_basic():
     card = TraceCard(
         dataset_name="wasmagent-v1",

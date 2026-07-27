@@ -40,8 +40,8 @@ Typical usage:
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from evomerge.router.classifier import RouterConfig, RouterRuleClassifier
 from evomerge.router.labels import RouterLabel

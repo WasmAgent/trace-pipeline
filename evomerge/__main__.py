@@ -37,7 +37,6 @@ import json
 import sys
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
@@ -75,8 +74,9 @@ def _cmd_export(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_adp_export(args: argparse.Namespace) -> int:
-    from evomerge.adp.export import rollout_file_to_adp
     import dataclasses
+
+    from evomerge.adp.export import rollout_file_to_adp
 
     out = args.out or None
     steps = rollout_file_to_adp(args.rollout, out=out)
@@ -94,8 +94,9 @@ def _cmd_adp_export(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_rl_export(args: argparse.Namespace) -> int:
-    from evomerge.rl.export import rollout_file_to_rl_transitions
     import dataclasses
+
+    from evomerge.rl.export import rollout_file_to_rl_transitions
 
     dims = [d.strip() for d in args.reward.split(",") if d.strip()] if args.reward else None
     out = args.out or None
@@ -114,9 +115,10 @@ def _cmd_rl_export(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_compile_context(args: argparse.Namespace) -> int:
-    from evomerge.context_compile.compiler import compile_file
     import dataclasses
     import json
+
+    from evomerge.context_compile.compiler import compile_file
 
     out = args.out or None
     records = compile_file(
@@ -208,9 +210,9 @@ def _cmd_synthesize(args: argparse.Namespace) -> int:
         )
         return 1
 
-    from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
-    from evomerge.synthesize.templates import builtin_templates, make_task_spec, TaskType
     from evomerge.io import write_jsonl
+    from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
+    from evomerge.synthesize.templates import TaskType, builtin_templates, make_task_spec
 
     client = anthropic.Anthropic()
     model = args.model
@@ -266,9 +268,10 @@ def _cmd_synthesize(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_validate(args: argparse.Namespace) -> int:
+    import json
+
     from evomerge.validate.contamination import check_contamination
     from evomerge.validate.schema_check import validate_training_record
-    import json
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)
@@ -287,7 +290,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 return 1
 
     # schema check — try to parse as SFT/DPO/PPO based on schema_version
-    from evomerge.schemas.training import SftTrainingRecord, DpoTrainingRecord, PpoTrainingRecord
+    from evomerge.schemas.training import DpoTrainingRecord, PpoTrainingRecord, SftTrainingRecord
     _schema_map = {"sft/v1": SftTrainingRecord, "dpo/v1": DpoTrainingRecord, "ppo/v1": PpoTrainingRecord}
 
     n_invalid = 0
@@ -340,8 +343,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_validate_aep(args: argparse.Namespace) -> int:
-    from evomerge.validate.aep import validate_aep_file, print_aep_report
     from pathlib import Path
+
+    from evomerge.validate.aep import print_aep_report, validate_aep_file
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)
@@ -773,7 +777,10 @@ def _cmd_import_otel(args: argparse.Namespace) -> int:
 
 def _cmd_import_ms_agent_framework(args: argparse.Namespace) -> int:
     """Convert Microsoft Agent Framework 1.0 workflow runs to AEP JSONL."""
-    from evomerge.benchmarks.ms_agent_framework_trace import load_ms_workflow_jsonl, ms_workflow_to_aep
+    from evomerge.benchmarks.ms_agent_framework_trace import (
+        load_ms_workflow_jsonl,
+        ms_workflow_to_aep,
+    )
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)
@@ -801,7 +808,7 @@ def _cmd_import_ms_agent_framework(args: argparse.Namespace) -> int:
 
 def _cmd_import_adk(args: argparse.Namespace) -> int:
     """Convert Google ADK trace JSONL to AEP JSONL."""
-    from evomerge.benchmarks.google_adk_trace import load_adk_trace_jsonl, adk_trace_to_aep
+    from evomerge.benchmarks.google_adk_trace import adk_trace_to_aep, load_adk_trace_jsonl
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)
@@ -829,7 +836,7 @@ def _cmd_import_adk(args: argparse.Namespace) -> int:
 
 def _cmd_import_a2a_task(args: argparse.Namespace) -> int:
     """Convert A2A (Agent-to-Agent) task trace JSONL to AEP JSONL."""
-    from evomerge.benchmarks.a2a_task_trace import load_a2a_task_jsonl, a2a_task_to_aep
+    from evomerge.benchmarks.a2a_task_trace import a2a_task_to_aep, load_a2a_task_jsonl
 
     if not args.input:
         print("[error] --input is required", file=sys.stderr)

@@ -29,7 +29,6 @@ from evomerge.capability.taxonomy import (
 )
 from evomerge.schemas.rollout import RolloutBranchRecord
 
-
 # ── Failure classes ──────────────────────────────────────────────────────────
 
 FAILURE_CLASSES = [
@@ -215,7 +214,7 @@ def mine_capability_gaps(
     n_pairs = 0
     failure_counts: dict[str, int] = {}
 
-    for rollout_id, branches in by_rollout.items():
+    for _rollout_id, branches in by_rollout.items():
         passing = [b for b in branches if b.objective_score == 1]
         failing = [b for b in branches if b.objective_score == 0]
         if not passing or not failing:

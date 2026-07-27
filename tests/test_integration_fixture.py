@@ -188,8 +188,8 @@ class TestCLIIntegration:
         assert rc == 0
 
     def test_cli_validate_exported_sft(self, capsys):
-        from evomerge.export import run_export
         from evomerge.__main__ import main
+        from evomerge.export import run_export
         with tempfile.TemporaryDirectory() as tmpdir:
             manifest = run_export(rollout_jsonl=str(FIXTURE_JSONL), out_dir=tmpdir)
             rc = main(["validate", "--input", manifest.files["sft"], "--strict"])

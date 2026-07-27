@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from evomerge.schemas.training import DpoTrainingRecord, SftTrainingRecord
 
@@ -418,7 +418,7 @@ ADMISSION_CATEGORIES = ("train_sft", "train_dpo", "train_repair", "train_router"
 
 def compute_admission_score(
     aep_record: dict,
-    quality_report: "QualityReport | None" = None,
+    quality_report: QualityReport | None = None,
 ) -> dict:
     """Compute an evidence admission score for a single AEP record.
 

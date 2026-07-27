@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from evomerge.eval.metrics import EvalRecord
+from evomerge.export import run_export
 from evomerge.io import load_router_records, write_dicts_jsonl
 from evomerge.router.features import RouterFeatures, feature_from_record
 from evomerge.router.labels import (
@@ -17,7 +18,6 @@ from evomerge.router.labels import (
 )
 from evomerge.schemas.training import Provenance
 from evomerge.synthesize.templates import TaskType, make_task_spec
-from evomerge.export import run_export
 
 
 def _features() -> RouterFeatures:
@@ -76,7 +76,7 @@ class TestRouterRecordRoundTrip:
             write_dicts_jsonl([r.to_dict() for r in records], p)
             loaded = load_router_records(p)
         assert len(loaded) == 8
-        for orig, loaded_r in zip(records, loaded):
+        for orig, loaded_r in zip(records, loaded, strict=False):
             assert orig.task_id == loaded_r.task_id
             assert orig.label == loaded_r.label
 

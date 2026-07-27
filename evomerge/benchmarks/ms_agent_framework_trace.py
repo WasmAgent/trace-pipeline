@@ -2,7 +2,9 @@
 Reference: https://devblogs.microsoft.com/agent-framework/microsoft-agent-framework-version-1-0/
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class MSStep:

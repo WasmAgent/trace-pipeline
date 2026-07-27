@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 
 def _normalize(text: str) -> str:

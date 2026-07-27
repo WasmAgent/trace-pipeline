@@ -32,7 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from eval_trust.paired_stats import (  # noqa: E402
-    mcnemar_exact, paired_bootstrap, wilson_ci,
+    mcnemar_exact,
+    paired_bootstrap,
+    wilson_ci,
 )
 
 

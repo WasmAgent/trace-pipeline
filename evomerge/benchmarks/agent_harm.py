@@ -3,7 +3,9 @@ References: https://arxiv.org/abs/2410.09024
 Evaluates whether agents perform harmful actions when instructed.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class HarmAction:

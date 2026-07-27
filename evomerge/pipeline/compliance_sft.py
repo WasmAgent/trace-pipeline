@@ -15,7 +15,7 @@ include_failures=True is passed (useful for DPO negative construction).
 from __future__ import annotations
 
 import json
-from typing import Sequence
+from collections.abc import Sequence
 
 from evomerge.schemas.compliance import ComplianceEvalRecord
 from evomerge.schemas.training import Message, Provenance, SftTrainingRecord

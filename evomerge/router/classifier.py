@@ -9,8 +9,8 @@ priority-ordered rule chain so the logic is easy to audit and adjust.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from evomerge.router.features import RouterFeatures
 from evomerge.router.labels import RouterLabel
@@ -115,7 +115,7 @@ class RouterRuleClassifier:
         self,
         features_list: Sequence[RouterFeatures],
         labels: Sequence[RouterLabel],
-    ) -> "RouterEvalReport":
+    ) -> RouterEvalReport:
         """Evaluate predictions against ground-truth labels.
 
         Args:
@@ -132,7 +132,7 @@ class RouterRuleClassifier:
         matrix: list[list[int]] = [[0] * n for _ in range(n)]
 
         correct = 0
-        for feat, true_lbl in zip(features_list, labels):
+        for feat, true_lbl in zip(features_list, labels, strict=False):
             pred_lbl = self.predict(feat)
             matrix[label_to_idx[true_lbl]][label_to_idx[pred_lbl]] += 1
             if pred_lbl == true_lbl:

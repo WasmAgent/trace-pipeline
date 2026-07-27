@@ -115,7 +115,7 @@ def _derive_label(direct_rec: dict, pcl_rec: dict) -> str:
 def load_samples(runs_dir: Path) -> list[Sample]:
     # key: (task_id, model, subdir) → {mode: record}
     by_key: dict[tuple, dict] = defaultdict(dict)
-    for subdir, model in BENCHMARK_DIRS:
+    for subdir, _model in BENCHMARK_DIRS:
         jsonl = runs_dir / subdir / "runs.jsonl"
         if not jsonl.exists():
             print(f"[skip] {jsonl}", file=sys.stderr)
@@ -151,12 +151,13 @@ def load_samples(runs_dir: Path) -> list[Sample]:
 
 def train_and_evaluate(samples: list[Sample], dry_run: bool = False) -> dict:
     try:
+        from collections import Counter
+
         import numpy as np
         from sklearn.ensemble import GradientBoostingClassifier
-        from sklearn.model_selection import StratifiedKFold, cross_validate
         from sklearn.metrics import classification_report, confusion_matrix
+        from sklearn.model_selection import StratifiedKFold, cross_validate
         from sklearn.preprocessing import LabelEncoder
-        from collections import Counter
     except ImportError as exc:
         print(f"[error] {exc}\n  pip install scikit-learn", file=sys.stderr)
         sys.exit(1)
@@ -237,10 +238,11 @@ def train_and_evaluate(samples: list[Sample], dry_run: bool = False) -> dict:
 # ── save RouterRecord JSONL ───────────────────────────────────────────────────
 
 def save_router_records(samples: list[Sample], out_path: Path) -> None:
-    from evomerge.router.labels import RouterLabel, RouterRecord
-    from evomerge.router.features import RouterFeatures
-    from evomerge.schemas.training import Provenance
     import hashlib
+
+    from evomerge.router.features import RouterFeatures
+    from evomerge.router.labels import RouterLabel, RouterRecord
+    from evomerge.schemas.training import Provenance
 
     label_map = {
         "small_model_can_handle": RouterLabel.small_model_can_handle,

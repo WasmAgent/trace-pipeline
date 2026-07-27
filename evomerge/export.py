@@ -15,10 +15,11 @@ Typical usage:
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
+from evomerge.dataset_card import generate_dataset_card
 from evomerge.io import (
     load_compliance_records,
     load_rollouts,
@@ -34,11 +35,10 @@ from evomerge.pipeline import (
 )
 from evomerge.validate import check_contamination, validate_training_record
 from evomerge.validate.redaction import (
-    RedactionReport,
-    BSCODE_REDACTED_FIELDS,
     BSCODE_PATTERNS,
+    BSCODE_REDACTED_FIELDS,
+    RedactionReport,
 )
-from evomerge.dataset_card import generate_dataset_card
 
 
 @dataclass

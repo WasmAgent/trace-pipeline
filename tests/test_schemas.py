@@ -1,20 +1,18 @@
 """Tests for evomerge.schemas — round-trip serialisation."""
 from __future__ import annotations
 
-
-
-from evomerge.schemas.rollout import BuildResult, RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
     ConstraintLevel,
     ConstraintViolation,
-    RepairTraceEntry,
     RepairStrategy,
+    RepairTraceEntry,
     RunMode,
     TaskSpec,
     ViolationStage,
 )
+from evomerge.schemas.rollout import BuildResult, RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.training import (
     DpoTrainingRecord,
     Message,

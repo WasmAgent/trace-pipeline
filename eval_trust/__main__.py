@@ -18,7 +18,6 @@ import json
 import sys
 from pathlib import Path
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _load_correctness(path: str) -> list[bool]:
@@ -61,7 +60,7 @@ def _cmd_paired(argv: list[str]) -> int:
     p.add_argument("--json", action="store_true", help="Output JSON instead of text")
     args = p.parse_args(argv)
 
-    from eval_trust.paired_stats import mcnemar_exact, paired_bootstrap, wilson_ci, n_for_power
+    from eval_trust.paired_stats import mcnemar_exact, n_for_power, paired_bootstrap, wilson_ci
 
     ca = _load_correctness(args.a)
     cb = _load_correctness(args.b)
@@ -70,8 +69,8 @@ def _cmd_paired(argv: list[str]) -> int:
         return 1
 
     n = len(ca)
-    b_count = sum(1 for a, bv in zip(ca, cb) if a and not bv)
-    c_count = sum(1 for a, bv in zip(ca, cb) if not a and bv)
+    b_count = sum(1 for a, bv in zip(ca, cb, strict=False) if a and not bv)
+    c_count = sum(1 for a, bv in zip(ca, cb, strict=False) if not a and bv)
     acc_a = sum(ca) / n
     acc_b = sum(cb) / n
     p_val = mcnemar_exact(b_count, c_count)

@@ -3,7 +3,9 @@ Reference: https://arxiv.org/abs/2601.11868
 Evaluates agents on real terminal tasks with human-written solutions.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class TBCommand:

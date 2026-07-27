@@ -66,8 +66,8 @@ def train_and_evaluate(records: list[dict]) -> dict:
     try:
         import numpy as np
         from sklearn.ensemble import GradientBoostingClassifier
-        from sklearn.model_selection import StratifiedKFold, cross_validate
         from sklearn.metrics import classification_report, confusion_matrix
+        from sklearn.model_selection import StratifiedKFold, cross_validate
         from sklearn.preprocessing import LabelEncoder
     except ImportError as exc:
         print(f"[error] {exc}\n  pip install scikit-learn", file=sys.stderr)

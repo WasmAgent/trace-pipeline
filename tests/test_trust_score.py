@@ -1,7 +1,11 @@
 """Tests for AgentTrustScore."""
 import pytest
+
 from evomerge.trust_score import (
-    AgentTrustScore, AgentTrustScoreBuilder, compute_trust_score, _geometric_mean
+    AgentTrustScore,
+    AgentTrustScoreBuilder,
+    _geometric_mean,
+    compute_trust_score,
 )
 
 

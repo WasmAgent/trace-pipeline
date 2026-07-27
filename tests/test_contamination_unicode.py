@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import logging
 
-
+from evomerge.pipeline.dpo import to_dpo_records
+from evomerge.schemas.rollout import RolloutBranchRecord
 from evomerge.validate.contamination import (
     _normalize,
     check_contamination,
@@ -26,9 +27,6 @@ from evomerge.validate.quality_gate import (
     check_anomalous_scores,
     check_injection_signals,
 )
-from evomerge.pipeline.dpo import to_dpo_records
-from evomerge.schemas.rollout import RolloutBranchRecord
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 

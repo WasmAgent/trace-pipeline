@@ -165,9 +165,10 @@ def main() -> int:
     # ── check training deps ──────────────────────────────────────────────────
     try:
         import torch
+        from peft import LoraConfig, get_peft_model
+        from peft import TaskType as PeftTaskType
         from transformers import AutoModelForCausalLM
-        from peft import LoraConfig, get_peft_model, TaskType as PeftTaskType
-        from trl import SFTTrainer, SFTConfig
+        from trl import SFTConfig, SFTTrainer
     except ImportError as exc:
         print(f"[error] {exc}", file=sys.stderr)
         print("  pip install -e '.[train]'  or  pip install peft trl transformers bitsandbytes",

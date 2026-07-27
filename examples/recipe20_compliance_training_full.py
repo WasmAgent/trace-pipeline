@@ -15,6 +15,8 @@ Run:
 """
 from __future__ import annotations
 
+from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
+from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -25,10 +27,7 @@ from evomerge.schemas.compliance import (
     RunMode,
     ViolationStage,
 )
-from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
-from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 from evomerge.validate.quality_gate import admission_gate
-
 
 # ── 1. Build synthetic ComplianceEvalRecords ──────────────────────────────────
 

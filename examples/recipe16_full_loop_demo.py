@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     dpo_path = manifest.files["dpo"]
 
     # peek at exported records
-    from evomerge.schemas.training import SftTrainingRecord, DpoTrainingRecord
+    from evomerge.schemas.training import DpoTrainingRecord, SftTrainingRecord
     with open(sft_path) as fh:
         sft_rec = SftTrainingRecord.model_validate_json(fh.readline())
     with open(dpo_path) as fh:
@@ -100,13 +100,13 @@ print("\n" + "=" * 60)
 print("Step 3: McNemar + bootstrap — is C > A significant?")
 print("=" * 60)
 
-from evomerge.eval import paired_significance, compare_all_groups
+from evomerge.eval import compare_all_groups, paired_significance
 
 group_records = {
     g: [_run_A(tid, t) if g == "A" else
         _run_B(tid, t) if g == "B" else
         _run_C(tid, t)
-        for tid, t in zip(TASK_IDS, TASKS)]
+        for tid, t in zip(TASK_IDS, TASKS, strict=False)]
     for g in "ABC"
 }
 

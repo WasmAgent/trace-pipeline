@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
+from evomerge.schemas.compliance import ConstraintLevel, TaskSpec
 from evomerge.synthesize.templates import (
     TaskType,
     builtin_templates,
     make_task_spec,
 )
-from evomerge.schemas.compliance import ConstraintLevel, TaskSpec
 
 
 class TestBuiltinTemplates:

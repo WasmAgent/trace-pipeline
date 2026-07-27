@@ -159,10 +159,10 @@ def main() -> int:
 def _import_ifeval_seed(results_dir: Path, seed: int, out_base: Path) -> None:
     """Quick import of a single ifeval seed without full CLI."""
     sys.path.insert(0, str(REPO_ROOT))
-    from evomerge.schemas.compliance import ComplianceEvalRecord
-    from evomerge.pipeline.compliance_sft import compliance_to_sft_records
-    from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
     from evomerge.io import write_jsonl
+    from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
+    from evomerge.pipeline.compliance_sft import compliance_to_sft_records
+    from evomerge.schemas.compliance import ComplianceEvalRecord
 
     records = []
     with open(results_dir / "runs.jsonl") as fh:

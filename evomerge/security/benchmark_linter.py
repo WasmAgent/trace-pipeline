@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-
 Severity = Literal["critical", "high", "medium", "low", "info"]
 Surface = Literal["gold_answer", "test_script", "env_leak", "grader", "network", "git_log", "unknown"]
 

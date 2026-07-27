@@ -9,9 +9,9 @@ Implements plan Section 6 Phase 3:
                           online use before an ML classifier is available
   - feature_from_record: factory function
 """
+from evomerge.router.classifier import RouterEvalReport, RouterRuleClassifier
 from evomerge.router.features import RouterFeatures, feature_from_record
 from evomerge.router.labels import RouterLabel, RouterRecord, label_from_record
-from evomerge.router.classifier import RouterRuleClassifier, RouterEvalReport
 
 __all__ = [
     "RouterFeatures",

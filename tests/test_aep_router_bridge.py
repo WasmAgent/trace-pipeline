@@ -6,7 +6,6 @@ import pytest
 from evomerge.router.aep_bridge import features_from_aep, label_from_aep
 from evomerge.router.labels import RouterLabel
 
-
 # ---------------------------------------------------------------------------
 # label_from_aep tests
 # ---------------------------------------------------------------------------

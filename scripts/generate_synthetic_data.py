@@ -94,10 +94,10 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    from evomerge.io import write_jsonl
     from evomerge.synthesize.generator import GenerationConfig, SyntheticGenerator
     from evomerge.synthesize.templates import builtin_templates
     from evomerge.validate.contamination import check_contamination
-    from evomerge.io import write_jsonl
 
     cfg = GenerationConfig(
         teacher_model=args.model,

@@ -167,7 +167,7 @@ class AgentTrustScoreBuilder:
         self._dims: dict[str, float | None] = {}
         self._notes: list[str] = []
 
-    def add_aep_record(self, record: dict[str, Any]) -> "AgentTrustScoreBuilder":
+    def add_aep_record(self, record: dict[str, Any]) -> AgentTrustScoreBuilder:
         """Extract evidence_completeness, policy_compliance, verifier_agreement, budget_compliance.
 
         When a dimension's evidence is absent (empty list / missing field), the
@@ -242,16 +242,16 @@ class AgentTrustScoreBuilder:
 
         return self
 
-    def add_task_success(self, passed: bool) -> "AgentTrustScoreBuilder":
+    def add_task_success(self, passed: bool) -> AgentTrustScoreBuilder:
         self._dims["task_success"] = 1.0 if passed else 0.0
         return self
 
-    def add_benchmark_trust(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_benchmark_trust(self, score: float) -> AgentTrustScoreBuilder:
         """Add benchmark environment trust score (from BenchmarkTrustScore.score)."""
         self._dims["benchmark_trust"] = max(0.0, min(1.0, score))
         return self
 
-    def add_receipt(self, has_receipt: bool, digest_verified: bool = False) -> "AgentTrustScoreBuilder":
+    def add_receipt(self, has_receipt: bool, digest_verified: bool = False) -> AgentTrustScoreBuilder:
         """Supply chain integrity: receipt present and digest verified.
 
         DEPRECATED shorthand — prefer add_receipt_path() which performs real
@@ -270,7 +270,7 @@ class AgentTrustScoreBuilder:
             self._notes.append("No run receipt — supply chain integrity unverified")
         return self
 
-    def add_receipt_path(self, receipt_path: Path | str) -> "AgentTrustScoreBuilder":
+    def add_receipt_path(self, receipt_path: Path | str) -> AgentTrustScoreBuilder:
         """Add supply chain integrity evidence by loading and verifying a receipt file.
 
         The receipt must be a JSON object produced by RunReceiptBuilder.  This
@@ -297,14 +297,14 @@ class AgentTrustScoreBuilder:
             )
         return self
 
-    def add_replay_determinism(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_replay_determinism(self, score: float) -> AgentTrustScoreBuilder:
         """Score for how deterministic/replayable the run is (0.0–1.0).
         1.0 = fully deterministic (seed set, no randomness), 0.0 = non-deterministic.
         """
         self._dims["replay_determinism"] = max(0.0, min(1.0, score))
         return self
 
-    def add_contamination_resistance(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_contamination_resistance(self, score: float) -> AgentTrustScoreBuilder:
         """Score for how resistant the benchmark/task is to contamination.
         Derived from BenchmarkTrustScore after running benchmark_linter.
         1.0 = no contamination risk detected, 0.0 = critical risks.
@@ -312,7 +312,7 @@ class AgentTrustScoreBuilder:
         self._dims["contamination_resistance"] = max(0.0, min(1.0, score))
         return self
 
-    def add_tool_misuse_resistance(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_tool_misuse_resistance(self, score: float) -> AgentTrustScoreBuilder:
         """Score for how well the runtime prevented tool misuse.
         1.0 = all risky tools were gated, 0.0 = unrestricted tool access.
         Can be derived from MCPGateway deny_rate or AEP capability_decisions.
@@ -320,21 +320,21 @@ class AgentTrustScoreBuilder:
         self._dims["tool_misuse_resistance"] = max(0.0, min(1.0, score))
         return self
 
-    def add_redaction_quality(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_redaction_quality(self, score: float) -> AgentTrustScoreBuilder:
         """Score for PII/secret redaction quality (0.0–1.0).
         1.0 = redaction profile applied and verified, 0.0 = no redaction.
         """
         self._dims["redaction_quality"] = max(0.0, min(1.0, score))
         return self
 
-    def add_runtime_isolation(self, score: float) -> "AgentTrustScoreBuilder":
+    def add_runtime_isolation(self, score: float) -> AgentTrustScoreBuilder:
         """Score for runtime isolation level.
         1.0 = WASM sandbox with capability manifest, 0.5 = process isolation, 0.0 = no isolation.
         """
         self._dims["runtime_isolation_level"] = max(0.0, min(1.0, score))
         return self
 
-    def add_dimension(self, name: str, score: float) -> "AgentTrustScoreBuilder":
+    def add_dimension(self, name: str, score: float) -> AgentTrustScoreBuilder:
         """Add an arbitrary named dimension (0.0–1.0)."""
         self._dims[name] = max(0.0, min(1.0, score))
         return self

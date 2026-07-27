@@ -1,7 +1,9 @@
 """Tests for compliance_to_dpo_records and cascade."""
 from __future__ import annotations
 
-
+from evomerge.pipeline.cascade import CascadeConfig, CascadeOutcome, CascadeRunner
+from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
+from evomerge.router.labels import RouterLabel
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -13,11 +15,7 @@ from evomerge.schemas.compliance import (
     ViolationStage,
 )
 from evomerge.schemas.training import DpoTrainingRecord
-from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
-from evomerge.pipeline.cascade import CascadeConfig, CascadeOutcome, CascadeRunner
-from evomerge.router.labels import RouterLabel
 from evomerge.synthesize.templates import TaskType, make_task_spec
-
 
 # ─── fixtures ────────────────────────────────────────────────────────────────
 

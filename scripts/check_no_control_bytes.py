@@ -20,6 +20,7 @@ Exit 0 = clean, exit 1 = at least one offending file.
 """
 
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 

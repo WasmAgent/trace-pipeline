@@ -20,27 +20,6 @@ Benchmark audit (eval_trust):
     eval_trust.lm_eval_bridge— lm-evaluation-harness adapter
     eval_trust.t0v2          — T0v2 channel audit (truncation, aggregate)
 """
-from evomerge.export import ExportManifest, run_export
-from evomerge.io import (
-    load_compliance_records,
-    load_jsonl,
-    load_rollouts,
-    load_router_records,
-    write_dicts_jsonl,
-    write_jsonl,
-)
-from evomerge.schemas import (
-    ComplianceEvalRecord,
-    ConstraintViolation,
-    DpoTrainingRecord,
-    Message,
-    PpoTrainingRecord,
-    Provenance,
-    RepairTraceEntry,
-    RolloutBranchRecord,
-    SftTrainingRecord,
-    TaskSpec,
-)
 from evomerge.eval import (
     EvalConfig,
     EvalGroup,
@@ -53,6 +32,15 @@ from evomerge.eval import (
     compute_metrics,
     paired_significance,
 )
+from evomerge.export import ExportManifest, run_export
+from evomerge.io import (
+    load_compliance_records,
+    load_jsonl,
+    load_rollouts,
+    load_router_records,
+    write_dicts_jsonl,
+    write_jsonl,
+)
 from evomerge.router import (
     RouterFeatures,
     RouterLabel,
@@ -60,6 +48,18 @@ from evomerge.router import (
     RouterRuleClassifier,
     feature_from_record,
     label_from_record,
+)
+from evomerge.schemas import (
+    ComplianceEvalRecord,
+    ConstraintViolation,
+    DpoTrainingRecord,
+    Message,
+    PpoTrainingRecord,
+    Provenance,
+    RepairTraceEntry,
+    RolloutBranchRecord,
+    SftTrainingRecord,
+    TaskSpec,
 )
 
 __all__ = [
