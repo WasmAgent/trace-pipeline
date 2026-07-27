@@ -1,0 +1,55 @@
+# schemas/
+
+JSON Schema files shipped with trace-pipeline, grouped by provenance. See
+`CLAUDE.md` ("Schema governance") for the cross-repo ownership contract.
+
+## trace-pipeline-owned (repo-local SSOT)
+
+These schemas describe outputs that are genuinely single-consumer — produced and
+consumed only inside trace-pipeline. They are the single source of truth here and
+are intentionally NOT mirrored into the `wasmagent-protocol` package.
+
+  dpo-training-record.schema.json   DPO preference pair (schema_version dpo/v1)
+  ppo-training-record.schema.json   PPO/GRPO reward record (schema_version ppo/v1)
+  sft-training-record.schema.json   supervised fine-tuning record (schema_version sft/v1)
+  trust-score.schema.json           to_json() contract for AgentTrustScore (trust-score/v1)
+
+The three `*-training-record` schemas are generated from the Pydantic models in
+`evomerge/schemas/training.py` by `scripts/export-schemas.py` and are the repo
+SSOT for training output. Confirm the on-disk JSON still matches the models with:
+
+    python scripts/export-schemas.py --check
+
+`trust-score.schema.json` is hand-authored against `AgentTrustScore.to_json()` in
+`evomerge/trust_score.py`; update the schema and the class together.
+
+## Consumed from the wasmagent-protocol package
+
+The AEP + compliance schemas are canonical in `WasmAgent/wasmagent-protocol`
+(PyPI: `wasmagent-protocol`, npm: `@wasmagent/protocol`). trace-pipeline is a
+consumer: it must not fork or hand-edit these. Canonical SSOT, consumed not owned:
+
+  aep-record.schema.json            AEP record (aep-record/v0.2)
+
+`aep-record` is read by `evomerge/validate/aep.py`. Verify trace-pipeline's
+Pydantic models still cover the package's required fields with:
+
+    python scripts/sync-wasmagent-schemas.py --check
+
+## Regenerated from local Pydantic models (package-aligned)
+
+The rollout + compliance wire schemas are produced from this repo's own Pydantic
+models by `scripts/export-schemas.py` and are kept aligned with the
+`wasmagent-protocol` contracts; `rollout-wire` is the one currently verified
+against the package by `scripts/sync-wasmagent-schemas.py`.
+
+  rollout-wire.schema.json            one RolloutForkRunner branch (rollout-wire/v1)
+  task-spec.schema.json               root contract for a compliance run
+  constraint-ir.schema.json           single constraint + optional repair policy
+  constraint-violation.schema.json    detected violation with location/stage
+  repair-trace-entry.schema.json      one round of repair
+  compliance-eval-record.schema.json  final output of one compliance run
+
+Regenerate all locally-maintained schemas (training + rollout + compliance) with:
+
+    python scripts/export-schemas.py
