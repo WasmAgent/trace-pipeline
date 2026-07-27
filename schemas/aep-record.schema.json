@@ -180,14 +180,6 @@
     "side_effect_class": {
       "type": "string",
       "description": "v0.3+: Classification of side effects produced by the run"
-    },
-    "argument_drift": {
-      "type": "object",
-      "description": "v0.3+: Detected argument drift metadata"
-    },
-    "dsse_envelope": {
-      "type": "object",
-      "description": "v0.4+: Dead Simple Signing Envelope wrapping the record"
     }
   }
 }
