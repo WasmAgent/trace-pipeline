@@ -1,11 +1,11 @@
 {
   "version": "1",
-  "updated": "2026-06-25",
+  "updated": "2026-07-27",
   "fixtures": [
     {
       "fixture": "fixtures/golden/compliance-direct-fail.v1.jsonl",
       "schema_version": "compliance-eval-record/v1",
-      "sha256": "654c8ed5f92ee12023c3449ba75091ac815373f9f7d6d27a8ae9daca47ec752b",
+      "sha256": "b35c9802381be3ff95111bf6f4e56f0cb6fbd00a0bfcd2563bca573869bb90bf",
       "n_records": 1,
       "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
@@ -13,7 +13,7 @@
     {
       "fixture": "fixtures/golden/compliance-direct-pass.v1.jsonl",
       "schema_version": "compliance-eval-record/v1",
-      "sha256": "a80a9bc0face93d7880a02584663825929c5529968497b45fafc17dc1eeaad3b",
+      "sha256": "3112665d1862cfe238f8c740a1fc1efb14d00254e83fa22762933901a357a828",
       "n_records": 1,
       "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"
@@ -21,7 +21,7 @@
     {
       "fixture": "fixtures/golden/compliance-repair-pass.v1.jsonl",
       "schema_version": "compliance-eval-record/v1",
-      "sha256": "20d5d1b5ad3875b5b6a74edc36c2d13782fafcceeba5931307c1a9a75a2aab0f",
+      "sha256": "c9998885aa3f177d71a1808d79896145ecd6b0223503f95c148d550b927932b9",
       "n_records": 1,
       "generated_by": "trace-pipeline/scripts",
       "generated_at": "2026-06-25"

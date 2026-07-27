@@ -7,6 +7,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+import wasmagent_protocol as wp
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+
 REPO_ROOT = Path(__file__).parent.parent
 SCHEMAS_DIR = REPO_ROOT / "schemas"
 
@@ -196,3 +200,54 @@ class TestFixtureValidatesAgainstSchema:
                 for key in record:
                     assert key in props, \
                         f"fixture field '{key}' not in rollout-wire schema properties"
+
+
+class TestGoldenFixturesValidateAgainstPackageSchema:
+    """Golden fixtures must validate against the canonical wasmagent-protocol
+    package schema (the SSOT), not the local fork — Milestone 2, issue #27."""
+
+    GOLDEN_DIR = REPO_ROOT / "fixtures" / "golden"
+
+    # record schema_version -> wasmagent-protocol schema id
+    SCHEMA_FOR_VERSION = {
+        "compliance-eval-record/v1": "compliance-eval-record",
+        "rollout-wire/v1": "rollout-wire",
+    }
+
+    @staticmethod
+    def _package_registry():
+        """Register every canonical package schema by $id so $ref siblings
+        (e.g. constraint-violation, repair-trace referenced from
+        compliance-eval-record) resolve without network access."""
+        docs = [wp.get_schema(sid) for sid in wp.schema_ids()]
+        return Registry().with_resources(
+            [(d["$id"], Resource.from_contents(d)) for d in docs]
+        )
+
+    def test_every_golden_record_validates(self):
+        golden = sorted(self.GOLDEN_DIR.glob("*.jsonl"))
+        assert golden, "no golden fixtures found under fixtures/golden/"
+        registry = self._package_registry()
+        failures = []
+        for path in golden:
+            for lineno, raw in enumerate(path.read_text().splitlines(), 1):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                record = json.loads(raw)
+                version = record.get("schema_version")
+                assert version in self.SCHEMA_FOR_VERSION, (
+                    f"{path.name}:{lineno} unmapped schema_version={version!r}"
+                )
+                schema = wp.get_schema(self.SCHEMA_FOR_VERSION[version])
+                errors = sorted(
+                    Draft202012Validator(schema, registry=registry).iter_errors(record),
+                    key=lambda e: list(e.path),
+                )
+                for err in errors:
+                    loc = "/".join(str(p) for p in err.path) or "<root>"
+                    failures.append(f"{path.name}:{lineno} {loc}: {err.message}")
+        assert not failures, (
+            "golden fixtures fail the canonical package schema:\n  "
+            + "\n  ".join(failures)
+        )
