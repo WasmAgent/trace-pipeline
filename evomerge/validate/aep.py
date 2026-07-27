@@ -26,15 +26,13 @@ except ImportError as _exc:
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from wasmagent_protocol import get_schema
 
 from evomerge.validate.keystore import KeyNotFoundError, load_public_key
 
-_SCHEMA_PATH = Path(__file__).parent.parent.parent / "schemas" / "aep-record.schema.json"
-
 
 def _load_schema() -> dict:
-    with open(_SCHEMA_PATH) as fh:
-        return json.load(fh)
+    return get_schema("aep-record")
 
 
 @dataclass
@@ -50,6 +48,10 @@ class AEPValidationResult:
     has_causal_chain: bool = False
     has_run_context: bool = False
     v0_2_fields_count: int = 0
+    # v0.3 top-level fields
+    has_recording_mode: bool = False
+    has_side_effect_class: bool = False
+    v0_3_fields_count: int = 0
 
     @property
     def evidence_completeness(self) -> float:
@@ -162,6 +164,13 @@ def validate_aep_record(
         1 for a in actions for f in _V0_2_CAUSAL_FIELDS if f in a
     )
 
+    # v0.3 top-level fields
+    _V0_3_FIELDS = [
+        "recording_mode", "side_effect_class", "run_side_effect_class_max",
+        "user_id", "subject_id",
+    ]
+    v0_3_count = sum(1 for f in _V0_3_FIELDS if f in record)
+
     return AEPValidationResult(
         run_id=run_id,
         valid_schema=valid_schema,
@@ -174,6 +183,9 @@ def validate_aep_record(
         has_causal_chain=any("parent_action_id" in a for a in actions),
         has_run_context="run_context" in record,
         v0_2_fields_count=v0_2_count,
+        has_recording_mode="recording_mode" in record,
+        has_side_effect_class="side_effect_class" in record,
+        v0_3_fields_count=v0_3_count,
     )
 
 
