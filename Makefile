@@ -4,7 +4,7 @@
 #   make help          # show all targets
 #   make test          # pytest + reproducer + self-test + all examples
 #   make lint          # ruff check (eval_trust + evomerge + scripts + tests)
-#   make schema-check  # verify schemas/ and field coverage
+#   make schema-check  # verify schemas/, field coverage, and org drift gate
 #   make schemas       # regenerate schemas/*.schema.json
 #   make figures       # regenerate paper figures from data/
 #   make paper         # rebuild draft.pdf + arxiv_upload.tar.gz
@@ -97,12 +97,15 @@ lint-fix:  ## Run ruff with --fix.
 # ============================================================================
 
 .PHONY: schema-check
-schema-check:  ## Verify schemas/ and data-loop field coverage.
+schema-check:  ## Verify schemas/, field coverage, and org drift gate.
 	@echo "=== data-loop field coverage ==="
 	@$(PYTHON) scripts/check-schema-fields.py
 	@echo ""
 	@echo "=== JSON Schema export check ==="
 	@$(PYTHON) scripts/export-schemas.py --check
+	@echo ""
+	@echo "=== Org schema-drift gate (wasmagent-protocol#116) ==="
+	@$(PYTHON) -m wasmagent_protocol check --scan --root .
 
 .PHONY: schemas
 schemas:  ## Regenerate schemas/*.schema.json from Pydantic models.
