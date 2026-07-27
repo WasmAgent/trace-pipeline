@@ -142,6 +142,46 @@ class TestExportScript:
             assert entry["missing"] == []
 
 
+class TestSchemaProvenanceReadme:
+    """schemas/README documents which schemas are trace-pipeline-owned vs.
+    consumed from the wasmagent-protocol package (issue #22)."""
+
+    README = SCHEMAS_DIR / "README"
+
+    # Single-consumer schemas that are the repo-local SSOT (named in #22).
+    OWNED_SCHEMAS = [
+        "dpo-training-record.schema.json",
+        "ppo-training-record.schema.json",
+        "sft-training-record.schema.json",
+        "trust-score.schema.json",
+    ]
+
+    def test_readme_exists_and_is_non_empty(self):
+        assert self.README.exists(), "schemas/README is missing"
+        assert self.README.stat().st_size > 0, "schemas/README is empty"
+
+    def test_readme_documents_owned_schemas(self):
+        text = self.README.read_text()
+        for name in self.OWNED_SCHEMAS:
+            assert name in text, f"schemas/README does not list owned schema: {name}"
+
+    def test_readme_states_trace_pipeline_owned(self):
+        text = self.README.read_text().lower()
+        assert "trace-pipeline" in text and "owned" in text, \
+            "schemas/README must state the named schemas are trace-pipeline-owned"
+
+    def test_readme_states_rest_come_from_package(self):
+        text = self.README.read_text().lower()
+        assert "wasmagent-protocol" in text and "package" in text, \
+            "schemas/README must state the rest come from the wasmagent-protocol package"
+
+    def test_owned_schemas_each_exist_and_are_non_empty(self):
+        for name in self.OWNED_SCHEMAS:
+            path = SCHEMAS_DIR / name
+            assert path.exists() and path.stat().st_size > 0, \
+                f"owned schema {name} missing or empty"
+
+
 class TestFixtureValidatesAgainstSchema:
     def test_fixture_fields_present_in_rollout_schema(self):
         schema = json.loads((SCHEMAS_DIR / "rollout-wire.schema.json").read_text())
