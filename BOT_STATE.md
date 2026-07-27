@@ -1,20 +1,21 @@
 # Bot State
 
-_Last updated: 2026-07-27 05:09 UTC by patrol_
+_Last updated: 2026-07-27 05:52 UTC by patrol_
 
 ## Queue
 
 | State | Count |
 |---|---|
-| Pending | 11 |
-| Active (running/reviewing) | 0 |
+| Pending | 9 |
+| Active (running/reviewing) | 1 |
 | Blocked | 0 |
-| Completed/Merged (all time) | 4 |
+| Completed/Merged (all time) | 5 |
 
 ## Recent Activity (last 5)
 
 | Issue | Title | Outcome | Date |
 |---|---|---|---|
+| #28 | [milestone Milestone 3 ] Adopt the org schema-drift CI ga... | completed/maintenance_done | 2026-07-27 |
 | #29 | [milestone Milestone 3 ] Wire the gate into `make ci` so ... | completed/maintenance_done | 2026-07-27 |
 | #17 | Strip local AEP/compliance schemas; consume wasmagent-pro... | completed/retry_split | 2026-07-27 |
 | #22 | [milestone Milestone 1 ] Keep repo-local schemas that are... | merged/merged | 2026-07-27 |
