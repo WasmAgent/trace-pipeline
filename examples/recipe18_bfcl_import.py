@@ -145,7 +145,7 @@ def main() -> None:
 
     # Build minimal AEP records for Evidence Admission scoring
     aep_records = []
-    for (result, task), rollout in zip(pairs, rollouts):
+    for (result, task), rollout in zip(pairs, rollouts, strict=False):
         passed = result.pass_rate == 1.0
         aep_records.append({
             "schema_version": "aep/v0.1",

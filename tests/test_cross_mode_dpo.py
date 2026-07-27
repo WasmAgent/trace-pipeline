@@ -1,7 +1,7 @@
 """Tests for cross_mode_dpo_records."""
 from __future__ import annotations
 
-
+from evomerge.pipeline.cross_mode_dpo import cross_mode_dpo_records, cross_mode_summary
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -10,7 +10,6 @@ from evomerge.schemas.compliance import (
     RunMode,
     ViolationStage,
 )
-from evomerge.pipeline.cross_mode_dpo import cross_mode_dpo_records, cross_mode_summary
 
 
 def _rec(task_id: str, mode: RunMode, final_pass: bool,

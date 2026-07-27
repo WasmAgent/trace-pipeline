@@ -88,7 +88,7 @@ class RunReceipt:
         path.write_text(json.dumps(self.to_dict(), indent=2))
 
     @classmethod
-    def load(cls, path: Path) -> "RunReceipt":
+    def load(cls, path: Path) -> RunReceipt:
         data = json.loads(path.read_text())
         inputs = [FileRef(**f) for f in data.pop("inputs", [])]
         outputs = [FileRef(**f) for f in data.pop("outputs", [])]
@@ -115,22 +115,22 @@ class RunReceiptBuilder:
         self._model_ids: list[str] = []
         self._policy_bundle_digest = ""
 
-    def add_input(self, path: str | Path) -> "RunReceiptBuilder":
+    def add_input(self, path: str | Path) -> RunReceiptBuilder:
         p = Path(path)
         self._inputs.append(FileRef(path=str(p), digest=compute_file_digest(p)))
         return self
 
-    def add_output(self, path: str | Path) -> "RunReceiptBuilder":
+    def add_output(self, path: str | Path) -> RunReceiptBuilder:
         p = Path(path)
         self._outputs.append(FileRef(path=str(p), digest=compute_file_digest(p)))
         return self
 
-    def add_model(self, model_id: str) -> "RunReceiptBuilder":
+    def add_model(self, model_id: str) -> RunReceiptBuilder:
         if model_id not in self._model_ids:
             self._model_ids.append(model_id)
         return self
 
-    def set_policy_bundle(self, digest: str) -> "RunReceiptBuilder":
+    def set_policy_bundle(self, digest: str) -> RunReceiptBuilder:
         self._policy_bundle_digest = digest
         return self
 

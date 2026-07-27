@@ -41,7 +41,7 @@ BENCHMARK_DIRS = [
 def load_runs(runs_dir: Path) -> list[dict]:
     """Load all ComplianceEvalRecord dicts from benchmark directories."""
     all_records: list[dict] = []
-    for subdir, model_hint, seed in BENCHMARK_DIRS:
+    for subdir, _model_hint, seed in BENCHMARK_DIRS:
         jsonl = runs_dir / subdir / "runs.jsonl"
         if not jsonl.exists():
             print(f"[skip] not found: {jsonl}", file=sys.stderr)
@@ -128,8 +128,8 @@ def main() -> int:
         print(f"    {k:<30} {v}")
 
     # ── convert ───────────────────────────────────────────────────────────────
-    from evomerge.pipeline.compliance_sft import compliance_to_sft_records
     from evomerge.pipeline.compliance_dpo import compliance_to_dpo_records
+    from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 
     sft_records       = compliance_to_sft_records(records)
     repair_dpo        = compliance_to_dpo_records(records)

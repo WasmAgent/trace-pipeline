@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from evomerge.__main__ import main
-from evomerge.schemas.rollout import RolloutBranchRecord
-from evomerge.schemas.training import Message, Provenance, SftTrainingRecord
 from evomerge.io import write_dicts_jsonl
 from evomerge.router.features import feature_from_record
 from evomerge.router.labels import RouterLabel, RouterRecord
+from evomerge.schemas.rollout import RolloutBranchRecord
+from evomerge.schemas.training import Message, Provenance, SftTrainingRecord
 from evomerge.synthesize.templates import TaskType, make_task_spec
 
 

@@ -23,11 +23,12 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import defaultdict
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
+from evomerge.pipeline.sft import _build_messages, _task_hash
 from evomerge.schemas.rollout import RolloutBranchRecord
 from evomerge.schemas.training import DpoTrainingRecord, Provenance
-from evomerge.pipeline.sft import _build_messages, _task_hash
 
 _LOG = logging.getLogger(__name__)
 

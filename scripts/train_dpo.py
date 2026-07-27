@@ -147,8 +147,9 @@ def main() -> int:
 
     try:
         import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-        from peft import LoraConfig, get_peft_model, TaskType as PeftTaskType, PeftModel
+        from peft import LoraConfig, PeftModel, get_peft_model
+        from peft import TaskType as PeftTaskType
+        from transformers import AutoModelForCausalLM, AutoTokenizer
         from trl import DPOConfig, DPOTrainer
     except ImportError as exc:
         print(f"[error] {exc}\n  pip install -e '.[train]'", file=sys.stderr)

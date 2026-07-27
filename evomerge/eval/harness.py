@@ -30,9 +30,9 @@ Typical usage:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Sequence
 
 from evomerge.eval.metrics import EvalMetrics, EvalRecord, compute_metrics
 
@@ -104,7 +104,7 @@ class EvalHarness:
         all_records: dict[str, list[EvalRecord]] = {g: [] for g in self.groups}
         all_errors: dict[str, list[str]] = {g: [] for g in self.groups}
 
-        for task_id, task in zip(self.config.task_ids, self.config.tasks):
+        for task_id, task in zip(self.config.task_ids, self.config.tasks, strict=False):
             for label, grp in self.groups.items():
                 try:
                     rec = grp.run_fn(task_id, task)

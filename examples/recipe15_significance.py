@@ -7,7 +7,7 @@ test whether the fine-tuned model (group C) outperforms the base model
 Run:
     python examples/recipe15_significance.py
 """
-from evomerge.eval import EvalRecord, paired_significance, compare_all_groups
+from evomerge.eval import EvalRecord, compare_all_groups, paired_significance
 
 # ---- synthetic results mirroring recipe14 stubs ----
 TASK_IDS = [f"task-{i:03d}" for i in range(30)]

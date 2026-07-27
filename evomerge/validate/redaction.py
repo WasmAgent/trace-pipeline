@@ -51,7 +51,7 @@ class RedactionReport:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RedactionReport":
+    def from_dict(cls, d: dict) -> RedactionReport:
         return cls(
             redaction_version=d.get("redaction_version", "unknown"),
             evidence_source=d.get("evidence_source", "unknown"),

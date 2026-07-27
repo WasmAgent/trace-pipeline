@@ -5,6 +5,11 @@ import json
 import tempfile
 from pathlib import Path
 
+from evomerge.io import load_rollouts
+from evomerge.pipeline.compliance_sft import compliance_to_sft_records
+from evomerge.pipeline.dpo import to_dpo_records
+from evomerge.pipeline.ppo import to_ppo_records
+from evomerge.pipeline.sft import _collapse_annotations, _normalize_tool_sequence, to_sft_records
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -17,11 +22,6 @@ from evomerge.schemas.compliance import (
 )
 from evomerge.schemas.rollout import RolloutBranchRecord, ToolCallEntry
 from evomerge.schemas.training import TurnAnnotation
-from evomerge.pipeline.sft import to_sft_records, _normalize_tool_sequence, _collapse_annotations
-from evomerge.pipeline.dpo import to_dpo_records
-from evomerge.pipeline.ppo import to_ppo_records
-from evomerge.pipeline.compliance_sft import compliance_to_sft_records
-from evomerge.io import load_rollouts
 
 
 def _branch(rollout_id="r1", branch_index=0, score=1, status="pass", answer="Good."):
@@ -354,7 +354,7 @@ class TestHighValueLossWeight:
     """Issue #5: 'high_value' loss_weight_tokens validates correctly."""
 
     def test_high_value_literal_accepted(self):
-        from evomerge.schemas.training import SftTrainingRecord, Message, Provenance
+        from evomerge.schemas.training import Message, Provenance, SftTrainingRecord
 
         record = SftTrainingRecord(
             messages=[

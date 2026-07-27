@@ -4,7 +4,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from evomerge.provenance import RunReceiptBuilder, RunReceipt, compute_file_digest
+from evomerge.provenance import RunReceipt, RunReceiptBuilder, compute_file_digest
 
 
 def test_build_receipt_basic():

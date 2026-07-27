@@ -26,6 +26,7 @@ for r in sft:
 
 # Validate before export
 from evomerge.validate.schema_check import validate_training_record
+
 for r in sft:
     result = validate_training_record(r)
     assert result.ok, result.errors

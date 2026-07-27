@@ -32,8 +32,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from dataclasses import asdict
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -108,11 +108,14 @@ def _run_group_c_inference(
 
     Returns list of EvalRecord. Raises ImportError if transformers/peft missing.
     """
-    from evomerge.eval.metrics import EvalRecord
-    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline as hf_pipeline
-    from peft import PeftModel
     import json
     import time
+
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import pipeline as hf_pipeline
+
+    from evomerge.eval.metrics import EvalRecord
 
     # Resolve base model path from adapter_config.json
     adapter_cfg_path = Path(model_path) / "adapter_config.json"
@@ -342,8 +345,8 @@ def main() -> int:
 
     # ── Significance test ─────────────────────────────────────────────────────
     print("\nrunning paired significance test (McNemar + bootstrap)...")
-    from evomerge.eval.stat_bridge import paired_significance
     from evomerge.eval.metrics import compute_metrics
+    from evomerge.eval.stat_bridge import paired_significance
 
     sig_report = paired_significance(
         records_a=group_a_records,

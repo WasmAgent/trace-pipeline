@@ -16,7 +16,6 @@ import pytest
 
 from evomerge.registry import Registry, RegistryEntry, RegistryIntegrityError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

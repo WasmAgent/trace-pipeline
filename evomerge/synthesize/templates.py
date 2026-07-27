@@ -286,10 +286,10 @@ def make_task_spec(task_type: TaskType, **kwargs: Any) -> TaskSpec:
     """
     try:
         task_type = TaskType(task_type)
-    except ValueError:
+    except ValueError as exc:
         raise ValueError(
             f"Unknown task type: {task_type!r}. Choose from {[t.value for t in TaskType]}"
-        )
+        ) from exc
     task_id = kwargs.pop("task_id", f"{task_type.value}_custom")
     intent = kwargs.pop("intent", f"Custom {task_type.value} task")
     language = kwargs.pop("language", "en")

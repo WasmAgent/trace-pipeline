@@ -4,7 +4,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-
 from evomerge.security.benchmark_linter import (
     lint_benchmark_dir,
 )

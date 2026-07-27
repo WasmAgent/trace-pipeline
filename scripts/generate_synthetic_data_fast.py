@@ -80,14 +80,11 @@ def main() -> int:
         "ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-latest"
     )
 
-    from evomerge.synthesize.templates import builtin_templates
-    from evomerge.synthesize.generator import (
-        _good_prompt, _bad_prompt, _repair_prompt
-    )
-    from evomerge.schemas.training import (
-        DpoTrainingRecord, Message, Provenance, SftTrainingRecord
-    )
     import random
+
+    from evomerge.schemas.training import DpoTrainingRecord, Message, Provenance, SftTrainingRecord
+    from evomerge.synthesize.generator import _bad_prompt, _good_prompt, _repair_prompt
+    from evomerge.synthesize.templates import builtin_templates
 
     templates = builtin_templates()
     rng = random.Random(42)

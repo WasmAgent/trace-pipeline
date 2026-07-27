@@ -6,6 +6,7 @@ becomes answerer and repairer training records.
 Run:
     python examples/recipe13_compliance_sft.py
 """
+from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     ConstraintCategory,
@@ -16,7 +17,6 @@ from evomerge.schemas.compliance import (
     RunMode,
     ViolationStage,
 )
-from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 
 # --- build two synthetic compliance records ---
 violation = ConstraintViolation(

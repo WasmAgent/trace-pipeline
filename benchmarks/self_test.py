@@ -42,7 +42,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import numpy as np  # noqa: E402
 
 from eval_trust.paired_stats import (  # noqa: E402
-    mcnemar_exact, paired_bootstrap, wilson_ci,
+    mcnemar_exact,
+    paired_bootstrap,
+    wilson_ci,
 )
 
 

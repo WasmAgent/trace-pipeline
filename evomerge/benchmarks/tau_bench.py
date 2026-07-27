@@ -1,6 +1,8 @@
 """τ-bench / τ³-bench adapter. Reference: https://github.com/sierra-research/tau-bench"""
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class TauTurn:

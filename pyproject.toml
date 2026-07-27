@@ -26,6 +26,9 @@ dependencies = [
     "pydantic>=2.0",
     "jsonschema>=4.0",
     "cryptography>=41.0",
+    # Canonical AEP + compliance JSON Schemas. SSOT = WasmAgent/wasmagent-protocol;
+    # this repo consumes them via the package and never forks the JSON.
+    "wasmagent-protocol>=0.1.5",
 ]
 
 [project.optional-dependencies]
@@ -51,9 +54,11 @@ testpaths = ["tests"]
 line-length = 100
 
 [tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
 ignore = [
     "E701",   # multiple statements on one line — used intentionally in compact stat tables
     "E402",   # module import not at top — scripts use sys.path.insert before local imports
     "F841",   # local variable assigned but unused — acceptable in scripts
     "E741",   # ambiguous variable name — 'l' in list comprehensions is fine
+    "E501",   # line too long — compact stat tables / long f-strings render intentionally wide
 ]

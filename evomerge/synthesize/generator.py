@@ -26,9 +26,10 @@ Typical usage:
 from __future__ import annotations
 
 import random
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, Sequence
 
+from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 from evomerge.schemas.compliance import (
     ComplianceEvalRecord,
     TaskSpec,
@@ -39,7 +40,6 @@ from evomerge.schemas.training import (
     Provenance,
     SftTrainingRecord,
 )
-from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 
 ChatFn = Callable[[list[dict[str, str]]], str]
 

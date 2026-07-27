@@ -5,11 +5,11 @@ Callers can replace the reward function via the reward_fn parameter.
 """
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
+from evomerge.pipeline.sft import _build_messages, _task_hash
 from evomerge.schemas.rollout import RolloutBranchRecord
 from evomerge.schemas.training import PpoTrainingRecord, Provenance
-from evomerge.pipeline.sft import _build_messages, _task_hash
 
 
 def to_ppo_records(

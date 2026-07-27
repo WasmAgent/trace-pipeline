@@ -23,8 +23,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from evomerge.eval.metrics import EvalRecord
 from eval_trust.paired_stats import mcnemar_exact, paired_bootstrap, wilson_ci
+from evomerge.eval.metrics import EvalRecord
 
 
 @dataclass
@@ -128,8 +128,8 @@ def paired_significance(
     n_pass_b = sum(pass_b)
 
     # McNemar b/c counts
-    b = sum(1 for pa, pb in zip(pass_a, pass_b) if pa and not pb)
-    c = sum(1 for pa, pb in zip(pass_a, pass_b) if not pa and pb)
+    b = sum(1 for pa, pb in zip(pass_a, pass_b, strict=False) if pa and not pb)
+    c = sum(1 for pa, pb in zip(pass_a, pass_b, strict=False) if not pa and pb)
 
     boot = paired_bootstrap(pass_a, pass_b, n_iter=bootstrap_iters)
 
@@ -143,8 +143,8 @@ def paired_significance(
     if tc_pairs:
         tc_valid_a = [ra.tool_calls_valid == ra.tool_calls_total for ra, _ in tc_pairs]
         tc_valid_b = [rb.tool_calls_valid == rb.tool_calls_total for _, rb in tc_pairs]
-        tc_b = sum(1 for va, vb in zip(tc_valid_a, tc_valid_b) if va and not vb)
-        tc_c = sum(1 for va, vb in zip(tc_valid_a, tc_valid_b) if not va and vb)
+        tc_b = sum(1 for va, vb in zip(tc_valid_a, tc_valid_b, strict=False) if va and not vb)
+        tc_c = sum(1 for va, vb in zip(tc_valid_a, tc_valid_b, strict=False) if not va and vb)
         tool_p = mcnemar_exact(tc_b, tc_c)
 
     return SignificanceReport(

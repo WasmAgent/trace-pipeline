@@ -14,8 +14,8 @@ Metrics (plan Section 7.4):
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 
 @dataclass

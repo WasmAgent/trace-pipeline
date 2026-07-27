@@ -54,8 +54,8 @@ def paired_mcnemar(base: dict, sft: dict, mode: str) -> dict:
         return {"n": 0, "b": 0, "c": 0, "p": 1.0}
     bp = [base[(tid, mode)]["final_pass"] for tid in common]
     sp = [sft[(tid, mode)]["final_pass"]  for tid in common]
-    b = sum(1 for x, y in zip(bp, sp) if x and not y)
-    c = sum(1 for x, y in zip(bp, sp) if not x and y)
+    b = sum(1 for x, y in zip(bp, sp, strict=False) if x and not y)
+    c = sum(1 for x, y in zip(bp, sp, strict=False) if not x and y)
     return {
         "n": len(common),
         "b": b, "c": c,
@@ -72,7 +72,7 @@ def main():
     all_base_pcl    = []
     all_sft_pcl     = []
 
-    for seed, bdir, sdir in zip(SEEDS, BASE_DIRS, SFT_DIRS):
+    for seed, bdir, sdir in zip(SEEDS, BASE_DIRS, SFT_DIRS, strict=False):
         base = load_by_mode(IFEVAL_DIR / bdir / "runs.jsonl")
         sft  = load_by_mode(IFEVAL_DIR / sdir / "runs.jsonl")
 
@@ -121,8 +121,8 @@ def main():
     n = len(all_base_pcl)
     agg_b_pcl = sum(all_base_pcl) / n if n else 0
     agg_s_pcl = sum(all_sft_pcl)  / n if n else 0
-    b_agg = sum(1 for x, y in zip(all_base_pcl, all_sft_pcl) if x and not y)
-    c_agg = sum(1 for x, y in zip(all_base_pcl, all_sft_pcl) if not x and y)
+    b_agg = sum(1 for x, y in zip(all_base_pcl, all_sft_pcl, strict=False) if x and not y)
+    c_agg = sum(1 for x, y in zip(all_base_pcl, all_sft_pcl, strict=False) if not x and y)
     p_agg = mcnemar_exact(b_agg, c_agg)
     boot  = paired_bootstrap(all_base_pcl, all_sft_pcl, n_iter=10000)
     ci_base = wilson_ci(sum(all_base_pcl), n)

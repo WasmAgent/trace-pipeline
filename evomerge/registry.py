@@ -37,8 +37,6 @@ import json
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
-
 
 ENTRY_TYPES = frozenset([
     "policy_bundle",
@@ -97,7 +95,7 @@ class RegistryEntry:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RegistryEntry":
+    def from_dict(cls, d: dict) -> RegistryEntry:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -167,10 +165,10 @@ class Registry:
             try:
                 from cryptography.exceptions import InvalidSignature
                 self._verify_key.verify(sig_bytes, index_bytes)
-            except InvalidSignature:
+            except InvalidSignature as exc:
                 raise RegistryIntegrityError(
                     "index.json signature verification failed — file may have been tampered with"
-                )
+                ) from exc
 
         # 2. Parse and validate entries
         data = json.loads(index_bytes)
@@ -272,7 +270,7 @@ class Registry:
         self._entries[entry.id] = entry
         self._append_event(_EVT_ROLLBACK, entry)
 
-    def lookup(self, entry_id: str) -> Optional[RegistryEntry]:
+    def lookup(self, entry_id: str) -> RegistryEntry | None:
         return self._entries.get(entry_id)
 
     def list_by_type(self, entry_type: str) -> list[RegistryEntry]:

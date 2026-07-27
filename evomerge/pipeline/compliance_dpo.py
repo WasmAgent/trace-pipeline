@@ -22,7 +22,7 @@ yields no preference signal.
 from __future__ import annotations
 
 import hashlib
-from typing import Sequence
+from collections.abc import Sequence
 
 from evomerge.schemas.compliance import ComplianceEvalRecord
 from evomerge.schemas.training import DpoTrainingRecord, Message, Provenance

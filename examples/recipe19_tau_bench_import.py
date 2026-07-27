@@ -166,7 +166,7 @@ def main() -> None:
 
     # Build AEP records for Evidence Admission scoring
     aep_records = []
-    for (result, task), rollout in zip(pairs, rollouts):
+    for (result, task), _rollout in zip(pairs, rollouts, strict=False):
         aep_rec = tau_to_aep(result, task)
         # admission_gate expects aep/v0.1 — tau_to_aep already sets this
         aep_records.append(aep_rec)

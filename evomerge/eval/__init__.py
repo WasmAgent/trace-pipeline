@@ -13,8 +13,8 @@ This module provides:
   - EvalHarness: runs all groups and computes metrics
   - paired_significance / compare_all_groups: McNemar + bootstrap significance
 """
-from evomerge.eval.metrics import EvalMetrics, EvalRecord, compute_metrics
 from evomerge.eval.harness import EvalConfig, EvalGroup, EvalHarness, EvalReport
+from evomerge.eval.metrics import EvalMetrics, EvalRecord, compute_metrics
 from evomerge.eval.stat_bridge import (
     SignificanceReport,
     compare_all_groups,

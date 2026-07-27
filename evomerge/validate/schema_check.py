@@ -7,11 +7,10 @@ reward in [0, 1], etc.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Union
 
 from evomerge.schemas.training import DpoTrainingRecord, PpoTrainingRecord, SftTrainingRecord
 
-TrainingRecord = Union[SftTrainingRecord, DpoTrainingRecord, PpoTrainingRecord]
+TrainingRecord = SftTrainingRecord | DpoTrainingRecord | PpoTrainingRecord
 
 
 @dataclass

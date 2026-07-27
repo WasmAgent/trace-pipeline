@@ -78,6 +78,7 @@ print("Step 2: Validate AEP record")
 print("=" * 60)
 
 from evomerge.validate.aep import validate_aep_record
+
 result = validate_aep_record(AEP_RECORD)
 print(f"  valid_schema          : {result.valid_schema}")
 print(f"  has_model_id          : {result.has_model_id}")
@@ -91,6 +92,7 @@ print("Step 3: Compute AgentTrustScore")
 print("=" * 60)
 
 from evomerge.trust_score import AgentTrustScoreBuilder
+
 builder = AgentTrustScoreBuilder()
 builder.add_aep_record(AEP_RECORD)
 builder.add_task_success(True)
@@ -109,7 +111,8 @@ print("\n" + "=" * 60)
 print("Step 4: Classify benchmark exploit surfaces")
 print("=" * 60)
 
-from eval_trust.exploit_surface import classify_findings, EXPLOIT_TAXONOMY
+from eval_trust.exploit_surface import EXPLOIT_TAXONOMY, classify_findings
+
 
 # Simulate a clean task (S6 only — no task manifest)
 class _MockFinding:
@@ -154,6 +157,7 @@ print("Step 6: Build RunReceipt (SCITT-style provenance)")
 print("=" * 60)
 
 from evomerge.provenance import RunReceiptBuilder
+
 receipt_builder = RunReceiptBuilder(
     run_id="recipe17-demo-001",
     operator="demo-script",

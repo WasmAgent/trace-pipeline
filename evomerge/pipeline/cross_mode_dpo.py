@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from typing import Sequence
+from collections.abc import Sequence
 
 from evomerge.schemas.compliance import ComplianceEvalRecord, RunMode
 from evomerge.schemas.training import DpoTrainingRecord, Message, Provenance
@@ -165,7 +165,7 @@ def cross_mode_summary(
         "only_pcl_passes": 0,
     }
 
-    for (task_id, model), mode_map in by_key.items():
+    for (_task_id, _model), mode_map in by_key.items():
         d  = mode_map.get("direct")
         pr = mode_map.get("prompt_retry")
         p  = mode_map.get("full_pcl")

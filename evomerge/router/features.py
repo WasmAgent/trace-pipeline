@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from evomerge.schemas.compliance import ConstraintLevel, TaskSpec
 from evomerge.eval.metrics import EvalRecord
+from evomerge.schemas.compliance import ConstraintLevel, TaskSpec
 
 
 @dataclass

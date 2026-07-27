@@ -201,7 +201,7 @@ def main() -> int:
                 for fn, schema in schemas
             ]
             # mark missing/drifted entries
-            for entry, (fn, schema) in zip(out, schemas):
+            for entry, (fn, schema) in zip(out, schemas, strict=False):
                 path = Path(args.out_dir) / fn
                 if not path.exists():
                     entry["ok"] = False
