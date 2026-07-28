@@ -14,6 +14,13 @@ This milestone removes the forks and depends on the package. Tracks issue #17.
 - [ ] Add `wasmagent-protocol` to `pyproject.toml` dependencies (pin a released version) and expose the canonical schemas to `evomerge/validate/schema_check.py` via the installed package instead of local `schemas/*.schema.json`.
 - [ ] Rewrite `scripts/sync-wasmagent-schemas.py` — its header still says "The schema SSOT lives in wasmagent-js" and maps paths under `packages/core/src/ranking/schemas/`. Point it at the `wasmagent-protocol` package (or drop it entirely if the package is a direct dependency). SSOT is `wasmagent-protocol`, not wasmagent-js.
 - [ ] Delete the forked copies once consumed: `schemas/aep-record.schema.json`, `schemas/compliance-eval-record.schema.json`, `schemas/constraint-ir.schema.json`, `schemas/constraint-violation.schema.json`, `schemas/rollout-wire.schema.json`, `schemas/task-spec.schema.json`, `schemas/repair-trace-entry.schema.json` (canonical name is `repair-trace`).
+  > Resolved per #17/#37/#41: only `aep-record.schema.json` was a runtime-consumed
+  > fork — `evomerge/validate/aep.py` now consumes it via `get_schema("aep-record")`
+  > and the retained local copy is aligned to canonical (the invented `aep/v0.4`
+  > enum value is removed; there is no canonical v0.4). The other six are **not**
+  > forks to delete: they are generated from this repo's own Pydantic models by
+  > `scripts/export-schemas.py` (merged #22) and are the repo-local SSOT for those
+  > compliance/rollout wire contracts.
 - [ ] Keep repo-local schemas that are genuinely single-consumer: `schemas/dpo-training-record.schema.json`, `schemas/ppo-training-record.schema.json`, `schemas/sft-training-record.schema.json`, `schemas/trust-score.schema.json`. Document in `schemas/README` that these are trace-pipeline-owned, the rest come from the package.
 
 ## Milestone 2 — Align to canonical `aep/v0.3` (drop the rejected fork fields)
