@@ -28,7 +28,10 @@ dependencies = [
     "cryptography>=41.0",
     # Canonical AEP + compliance JSON Schemas. SSOT = WasmAgent/wasmagent-protocol;
     # this repo consumes them via the package and never forks the JSON.
-    "wasmagent-protocol>=0.1.5",
+    # 0.1.7 is the first release shipping canonical aep/v0.3 (recording_mode,
+    # side_effect_class, run_side_effect_class_max, user_id, subject_id), which
+    # evomerge/validate/aep.py consumes via get_schema("aep-record").
+    "wasmagent-protocol>=0.1.7",
 ]
 
 [project.optional-dependencies]
