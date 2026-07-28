@@ -43,3 +43,16 @@ some are rejected. Align once canonical `aep/v0.3` ships.
 
 - [ ] Keep `docs/data-loop-contract.md` (the binding three-repo contract) in sync with the canonical `rollout-wire`, `compliance-eval-record`, and training-record schemas.
 - [ ] Add a round-trip test: a `ComplianceEvalRecord` produced against the canonical schema exports cleanly to SFT/DPO/PPO training records and re-validates.
+
+```markdown
+## Milestone 5 — Production Trace Pipeline at Scale
+
+- [ ] Horizontal scaling for trace ingestion — partition AEP records by `user_id`/`subject_id` shards, implement concurrent validation workers, and add backpressure-aware queueing (Redis/RabbitMQ) to handle burst traffic from multiple agent instances.
+- [ ] Streaming compliance evaluation — replace batch-mode constraint checking with incremental evaluation as AEP records arrive, enabling early detection of violations and sub-second feedback to agent control loops.
+- [ ] Trace archival and retrieval layer — implement time-partitioned storage (Parquet on S3/GCS) with indexed query APIs for audit trails, reproduction, and historical trust-score calculation; add retention policies and tiered cold-storage.
+- [ ] DPO/PPO/SFT training pipeline integration — wire the validated trace exporters to actual training job orchestration (Ray/Lightning), with dataset versioning, checkpoint management, and training-loss telemetry back into trust scores.
+- [ ] Reproducible trace replay framework — add deterministic re-execution of recorded AEP traces with side-effect mocking and state snapshot/restore to enable "debug mode" for failed trust checks and regression testing of agent updates.
+- [ ] Trust-score aggregation and serving — materialize per-subject trust scores from historical traces, serve low-latency lookups via caching layer (Redis/Memcached), and expose Prometheus metrics for score distribution and drift monitoring.
+- [ ] Multi-tenant isolation — introduce tenant-scoped trace segregation (by organization/team boundaries), per-tenant resource quotas, and audit-grade access logging for compliance consumers.
+- [ ] Pipeline health and SLA monitoring — add end-to-end latency tracking, per-stage success rates, alerting on validation failures/backlog buildup, and automated canary testing of schema evolution from `wasmagent-protocol` updates.
+```
