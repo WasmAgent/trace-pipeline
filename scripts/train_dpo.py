@@ -31,6 +31,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+# Training-pipeline integration (issue #54): dataset versioning, checkpoint
+# registry, and loss-telemetry feedback. Torch-agnostic, so importing here does
+# not affect the torch-optional flow below.
+from evomerge.training_pipeline import (  # noqa: E402
+    CheckpointEntry,
+    CheckpointRegistry,
+    telemetry_from_summary,
+    version_dataset,
+)
+
 # Default DPO data sources relative to REPO_ROOT
 _DEFAULT_DPO_SOURCES = [
     "data/training/ifeval/compliance_dpo.jsonl",
@@ -195,6 +205,13 @@ def main() -> int:
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Version the training dataset (content-addressed) so this run is reproducible.
+    # `paths` is only defined for --dpo-data; --merge-all has no explicit source list.
+    _sources = None if args.merge_all else paths
+    dataset_version = version_dataset(records, name="dpo", out_dir=out, sources=_sources)
+    print(f"  dataset version : {dataset_version.version} "
+          f"({dataset_version.record_count} records)")
+
     training_args = DPOConfig(
         output_dir=str(out),
         num_train_epochs=args.epochs if args.max_steps <= 0 else 1,
@@ -232,6 +249,10 @@ def main() -> int:
     trainer.save_model(str(out / "final"))
     tokenizer.save_pretrained(str(out / "final"))
 
+    # Capture training-loss history for telemetry (issue #54).
+    log_history = getattr(getattr(trainer, "state", None), "log_history", []) or []
+    loss_history = [float(e["loss"]) for e in log_history if isinstance(e, dict) and "loss" in e]
+
     summary = {
         "sft_checkpoint": str(sft_ckpt),
         "n_dpo_pairs": len(records),
@@ -239,8 +260,23 @@ def main() -> int:
         "num_train_epochs": args.epochs if args.max_steps <= 0 else None,
         "max_steps": args.max_steps if args.max_steps > 0 else None,
         "lr": args.lr,
+        "loss_history": loss_history,
+        "final_loss": loss_history[-1] if loss_history else None,
     }
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
+
+    # Emit loss telemetry and register the checkpoint in the lineage registry.
+    telemetry = telemetry_from_summary(summary, mode="dpo")
+    (out / "training_telemetry.json").write_text(json.dumps(telemetry.to_dict(), indent=2))
+    CheckpointRegistry(out / "checkpoints.jsonl").register(CheckpointEntry(
+        checkpoint_id=f"dpo-{dataset_version.version}",
+        mode="dpo",
+        dataset_version=dataset_version.content_digest,
+        base_ref=str(sft_ckpt),
+        status="ready",
+        path=str(out / "final"),
+        metrics={"final_loss": telemetry.final_loss, "converged": telemetry.converged},
+    ))
     print(f"\n✓ DPO training complete → {out}/final")
     return 0
 
