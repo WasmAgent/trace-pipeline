@@ -339,6 +339,45 @@ class AgentTrustScoreBuilder:
         self._dims[name] = max(0.0, min(1.0, score))
         return self
 
+    def add_training_telemetry(self, telemetry: Any) -> AgentTrustScoreBuilder:
+        """Fold training-loss telemetry back into the score as ``training_health``.
+
+        Closes the trace→training→trust feedback loop (Milestone 5): the loss
+        telemetry from a training job is mapped to a [0, 1] health dimension and
+        enters the geometric mean, so a model that converged well lifts the trust
+        score and a divergent/untrained run does not.
+
+        Accepts:
+          - a plain ``int``/``float`` in [0, 1] (used directly as the health score), or
+          - a ``evomerge.training_pipeline.LossTelemetry`` (or any duck-typed object
+            exposing ``loss_history`` / ``final_loss`` / ``initial_loss`` /
+            ``converged_below``), scored via ``telemetry_to_training_health``.
+        """
+        if isinstance(telemetry, bool):
+            # bool is an int subclass — treat as a 0/1 health score explicitly.
+            health = 1.0 if telemetry else 0.0
+        elif isinstance(telemetry, (int, float)):
+            health = float(telemetry)
+        else:
+            # Lazy import avoids a hard dependency / import cycle.
+            from evomerge.training_pipeline import LossTelemetry, telemetry_to_training_health
+
+            if isinstance(telemetry, LossTelemetry):
+                health = telemetry_to_training_health(telemetry)
+            else:  # duck-typed object with the same attributes
+                proxy = LossTelemetry(
+                    mode=getattr(telemetry, "mode", "sft"),
+                    steps=getattr(telemetry, "steps", 0),
+                    initial_loss=getattr(telemetry, "initial_loss", None),
+                    final_loss=getattr(telemetry, "final_loss", None),
+                    loss_history=list(getattr(telemetry, "loss_history", []) or []),
+                    converged=bool(getattr(telemetry, "converged", False)),
+                    converged_below=float(getattr(telemetry, "converged_below", 0.1) or 0.1),
+                )
+                health = telemetry_to_training_health(proxy)
+        self._dims["training_health"] = max(0.0, min(1.0, health))
+        return self
+
     def build(self) -> AgentTrustScore:
         # Only include non-None dimensions in the geometric mean
         known_values = [v for v in self._dims.values() if v is not None]

@@ -41,6 +41,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 
+# Training-pipeline integration (issue #54): dataset versioning, checkpoint
+# registry, and loss-telemetry feedback. These helpers are torch-agnostic, so
+# importing them here does not affect the torch-optional flow below.
+from evomerge.training_pipeline import (  # noqa: E402
+    CheckpointEntry,
+    CheckpointRegistry,
+    telemetry_from_summary,
+    version_dataset,
+)
+
 
 def _load_sft_records(paths: list[str]) -> list[dict]:
     """Load and merge multiple SFT JSONL files."""
@@ -219,6 +229,11 @@ def main() -> int:
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Version the training dataset (content-addressed) so this run is reproducible.
+    dataset_version = version_dataset(records, name="sft", out_dir=out, sources=paths)
+    print(f"  dataset version : {dataset_version.version} "
+          f"({dataset_version.record_count} records)")
+
     # EarlyStoppingCallback based on loss threshold
     from transformers import TrainerCallback
 
@@ -279,6 +294,10 @@ def main() -> int:
     trainer.save_model(str(out / "final"))
     tokenizer.save_pretrained(str(out / "final"))
 
+    # Capture training-loss history for telemetry (issue #54).
+    log_history = getattr(getattr(trainer, "state", None), "log_history", []) or []
+    loss_history = [float(e["loss"]) for e in log_history if isinstance(e, dict) and "loss" in e]
+
     # save training summary
     summary = {
         "base_model": args.base_model,
@@ -289,8 +308,23 @@ def main() -> int:
         "dtype": dtype_str,
         "max_steps": args.max_steps,
         "lr": args.lr,
+        "loss_history": loss_history,
+        "final_loss": loss_history[-1] if loss_history else None,
     }
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
+
+    # Emit loss telemetry and register the checkpoint in the lineage registry.
+    telemetry = telemetry_from_summary(summary, mode="sft")
+    (out / "training_telemetry.json").write_text(json.dumps(telemetry.to_dict(), indent=2))
+    CheckpointRegistry(out / "checkpoints.jsonl").register(CheckpointEntry(
+        checkpoint_id=f"sft-{dataset_version.version}",
+        mode="sft",
+        dataset_version=dataset_version.content_digest,
+        base_ref=args.base_model,
+        status="ready",
+        path=str(out / "final"),
+        metrics={"final_loss": telemetry.final_loss, "converged": telemetry.converged},
+    ))
     print(f"\n✓ training complete → {out}/final")
     return 0
 
