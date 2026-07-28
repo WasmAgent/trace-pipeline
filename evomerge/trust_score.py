@@ -41,7 +41,10 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from evomerge.replay.engine import ReplayResult
 
 # Minimum number of non-None ("known") dimensions required for each grade
 _MIN_KNOWN_FOR_GRADE: dict[str, int] = {
@@ -302,6 +305,25 @@ class AgentTrustScoreBuilder:
         1.0 = fully deterministic (seed set, no randomness), 0.0 = non-deterministic.
         """
         self._dims["replay_determinism"] = max(0.0, min(1.0, score))
+        return self
+
+    def add_replay_result(self, result: ReplayResult) -> AgentTrustScoreBuilder:
+        """Derive ``replay_determinism`` from a replay-framework result.
+
+        Feeds the reproducible trace replay framework
+        (:mod:`evomerge.replay`) into the trust score: a trace that replays
+        cleanly (every action's recorded result/state reproduced) scores 1.0;
+        one with causal breaks, unrecorded side effects, or fidelity drift
+        scores below 1.0. Any detected mismatch is recorded as a note so a
+        failed trust check carries the debug-mode evidence forward.
+        """
+        self._dims["replay_determinism"] = max(0.0, min(1.0, result.determinism_score))
+        if not result.is_deterministic:
+            self._notes.append(
+                f"Replay of run {result.run_id} was non-deterministic "
+                f"(score={result.determinism_score:.2f}, "
+                f"{len(result.mismatches)} mismatch(es))"
+            )
         return self
 
     def add_contamination_resistance(self, score: float) -> AgentTrustScoreBuilder:
