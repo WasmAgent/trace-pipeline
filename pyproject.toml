@@ -38,6 +38,10 @@ dependencies = [
 dev    = ["pytest>=8", "ruff>=0.5", "scipy>=1.11", "sympy>=1.12"]
 ml     = ["scikit-learn>=1.3", "joblib>=1.3"]
 train  = ["scikit-learn>=1.3", "joblib>=1.3", "peft>=0.10", "trl>=0.8", "transformers>=4.40", "bitsandbytes>=0.43"]
+# Archival / retrieval layer (Milestone 5, issue #53): enables the genuine
+# columnar Parquet codec (evomerge.storage.ParquetCodec). JSONL is the default
+# codec and needs no extra deps, so the base/dev install stays dependency-light.
+arch   = ["pyarrow>=14.0"]
 
 [project.scripts]
 evomerge = "evomerge.__main__:main"

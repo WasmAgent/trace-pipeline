@@ -130,6 +130,50 @@ def _geometric_mean(values: list[float]) -> float:
     return math.exp(log_sum / len(values))
 
 
+def _trace_to_dict(trace: Any) -> dict[str, Any]:
+    """Normalise a historical trace (pydantic model or dict) to a dict."""
+    if isinstance(trace, dict):
+        return trace
+    if hasattr(trace, "model_dump"):
+        return trace.model_dump(mode="json")
+    if hasattr(trace, "dict"):
+        return trace.dict()
+    return dict(trace)
+
+
+def historical_consistency(traces: Any) -> float | None:
+    """Reduce a set of retrieved historical traces to a [0, 1] consistency score.
+
+    Each trace contributes a per-run trustworthiness value:
+      - ``objective_status == "pass"`` → 1.0, ``"fail"`` → 0.0, otherwise
+      - ``objective_score`` (a number) clamped to [0, 1].
+
+    Returns the mean over all scored traces, or ``None`` when no trace carried
+    a usable signal (so the dimension is recorded as *unknown* rather than a
+    misleading 0.0 that would collapse the geometric mean).
+    """
+    traces = list(traces)
+    if not traces:
+        return None
+    scores: list[float] = []
+    for trace in traces:
+        rec = _trace_to_dict(trace)
+        status = rec.get("objective_status")
+        if status == "pass":
+            scores.append(1.0)
+        elif status == "fail":
+            scores.append(0.0)
+        else:
+            score = rec.get("objective_score")
+            if isinstance(score, bool):
+                scores.append(1.0 if score else 0.0)
+            elif isinstance(score, (int, float)):
+                scores.append(max(0.0, min(1.0, float(score))))
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
 def _verify_receipt_digest(receipt_path: Path) -> bool:
     """Re-compute the receipt's own canonical SHA-256 and compare to receipt_digest field.
 
@@ -376,6 +420,39 @@ class AgentTrustScoreBuilder:
                 )
                 health = telemetry_to_training_health(proxy)
         self._dims["training_health"] = max(0.0, min(1.0, health))
+        return self
+
+    def add_historical_traces(self, traces: Any) -> AgentTrustScoreBuilder:
+        """Fold retrieved historical traces into the score as ``historical_consistency``.
+
+        Closes the retrieval → trust-score loop (Milestone 5, issue #53): traces
+        materialised from the archival/retrieval layer
+        (``evomerge.storage.TraceStorage.query``) are reduced to a [0, 1]
+        consistency dimension and enter the geometric mean, so a subject whose
+        historical runs mostly succeeded lifts the score and one with a poor
+        track record does not.
+
+        Accepts:
+          - a plain ``int``/``float`` in [0, 1] (used directly as the consistency), or
+          - an iterable of trace records (dicts or pydantic models), e.g. the
+            output of ``TraceStorage.query(...)``, scored via
+            :func:`historical_consistency`. An empty / signal-less iterable
+            records the dimension as *None* (unknown).
+        """
+        if isinstance(traces, bool):
+            # bool is an int subclass — treat as an explicit 0/1 consistency.
+            consistency: float | None = 1.0 if traces else 0.0
+        elif isinstance(traces, (int, float)):
+            consistency = float(traces)
+        else:
+            consistency = historical_consistency(traces)
+        if consistency is None:
+            self._dims["historical_consistency"] = None
+            self._notes.append(
+                "historical_consistency: no scored historical traces — dimension unknown"
+            )
+        else:
+            self._dims["historical_consistency"] = max(0.0, min(1.0, consistency))
         return self
 
     def build(self) -> AgentTrustScore:
