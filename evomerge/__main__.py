@@ -9,6 +9,7 @@ Commands:
   synthesize            Generate synthetic SFT/DPO samples via a teacher model
   validate              Run contamination and schema checks on training JSONL
   validate-aep          Validate AEP (Agent Evidence Protocol) records
+  stream-eval           Incrementally evaluate AEP records as they arrive (streaming compliance)
   lint-benchmark        Check a benchmark task dir for anti-reward-hacking exploit surfaces
   receipt               Produce a run provenance receipt (RunReceipt JSON)
   import-bfcl           Convert BFCL v4 results JSONL to rollout-wire/v1 JSONL
@@ -365,6 +366,62 @@ def _cmd_validate_aep(args: argparse.Namespace) -> int:
     passed = sum(1 for r in results if r.passed)
     pass_rate = passed / len(results)
     return 0 if pass_rate >= args.fail_under else 1
+
+
+# ---------------------------------------------------------------------------
+# stream-eval
+# ---------------------------------------------------------------------------
+
+def _iter_jsonl(path: Path):
+    """Yield JSON objects from a JSONL file one line at a time (streaming)."""
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            yield json.loads(line)
+
+
+def _cmd_stream_eval(args: argparse.Namespace) -> int:
+    """Incrementally evaluate AEP records as they arrive (streaming compliance).
+
+    The streaming replacement for the batch ``validate-aep`` flow: the input file
+    is read line by line and each record is evaluated the instant it arrives,
+    emitting one JSON feedback object per record followed by a final stats
+    summary. Exits non-zero if the within-SLA fraction or pass rate falls below
+    the configured floor — so an agent control loop can gate on the exit code.
+    """
+    from pathlib import Path
+
+    from evomerge.streaming import StreamingComplianceEvaluator
+
+    if not args.input:
+        print("[error] --input is required", file=sys.stderr)
+        return 1
+    path = Path(args.input)
+    if not path.exists():
+        print(f"[error] file not found: {path}", file=sys.stderr)
+        return 1
+
+    evaluator = StreamingComplianceEvaluator(
+        require_signature=args.require_signature,
+        score_admission=not args.no_admission,
+        max_hard_per_subject=args.max_hard_per_subject,
+    )
+
+    for record in _iter_jsonl(path):
+        feedback = evaluator.ingest(record)
+        sys.stdout.write(json.dumps(feedback.to_dict(), ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+    stats = evaluator.stats.to_dict()
+    sys.stdout.write(json.dumps({"stream_stats": stats}, ensure_ascii=False) + "\n")
+
+    if stats["ingested"] and stats["passed"] / stats["ingested"] < args.fail_under:
+        return 1
+    if stats["within_sla"] < args.fail_under_sla:
+        return 1
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1141,6 +1198,24 @@ def _build_parser() -> argparse.ArgumentParser:
     aep.add_argument("--fail-under", type=float, default=1.0, metavar="F",
                      help="minimum pass rate (0.0–1.0) required for exit 0 (default: 1.0)")
 
+    # --- stream-eval ---
+    se = sub.add_parser(
+        "stream-eval",
+        help="incrementally evaluate AEP records as they arrive (streaming compliance)",
+    )
+    se.add_argument("--input", metavar="FILE", required=True,
+                    help="AEP/rollout records JSONL file (read line by line)")
+    se.add_argument("--require-signature", action="store_true",
+                    help="require a valid Ed25519 signature on each record")
+    se.add_argument("--no-admission", action="store_true",
+                    help="skip per-record admission scoring (feedback only)")
+    se.add_argument("--max-hard-per-subject", type=int, default=3, metavar="N",
+                    help="backpressure budget: hard violations per subject before advisory (default: 3)")
+    se.add_argument("--fail-under", type=float, default=0.0, metavar="F",
+                    help="minimum pass rate (0.0–1.0) required for exit 0 (default: 0.0)")
+    se.add_argument("--fail-under-sla", type=float, default=0.99, metavar="F",
+                    help="minimum fraction of ingests within the sub-second SLA (default: 0.99)")
+
     # --- lint-benchmark ---
     lb = sub.add_parser("lint-benchmark",
                         help="check a benchmark task dir for anti-reward-hacking exploit surfaces")
@@ -1347,6 +1422,7 @@ def main(argv: list[str] | None = None) -> int:
         "synthesize": _cmd_synthesize,
         "validate": _cmd_validate,
         "validate-aep": _cmd_validate_aep,
+        "stream-eval": _cmd_stream_eval,
         "lint-benchmark": _cmd_lint_benchmark,
         "receipt": _cmd_receipt,
         "import-bfcl": _cmd_import_bfcl,
