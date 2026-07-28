@@ -6,6 +6,7 @@ from evomerge.trust_score import (
     AgentTrustScoreBuilder,
     _geometric_mean,
     compute_trust_score,
+    historical_consistency,
 )
 
 
@@ -162,3 +163,64 @@ def test_replay_determinism_zero_collapses():
     builder.add_replay_determinism(0.0)
     score = builder.build()
     assert score.overall == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Historical-traces hook (Milestone 5, issue #53 — retrieval → trust loop)
+# ---------------------------------------------------------------------------
+
+def test_historical_consistency_mixed_signals():
+    traces = [
+        {"objective_status": "pass"},
+        {"objective_status": "fail"},
+        {"objective_score": 0.5},
+    ]
+    # (1.0 + 0.0 + 0.5) / 3
+    assert historical_consistency(traces) == pytest.approx(0.5)
+
+
+def test_historical_consistency_empty_is_none():
+    assert historical_consistency([]) is None
+    # No usable signal → None, not 0.0.
+    assert historical_consistency([{"objective_status": "unknown"}]) is None
+
+
+def test_add_historical_traces_from_float():
+    score = AgentTrustScoreBuilder().add_historical_traces(0.8).build()
+    assert score.breakdown["historical_consistency"] == pytest.approx(0.8)
+
+
+def test_add_historical_traces_from_records():
+    traces = [{"objective_status": "pass"}, {"objective_status": "pass"}, {"objective_status": "fail"}]
+    score = (
+        AgentTrustScoreBuilder()
+        .add_task_success(True)
+        .add_historical_traces(traces)
+        .build()
+    )
+    assert score.breakdown["historical_consistency"] == pytest.approx(2 / 3)
+
+
+def test_add_historical_traces_empty_records_dimension_unknown():
+    builder = AgentTrustScoreBuilder().add_historical_traces([])
+    score = builder.build()
+    # Empty history → dimension recorded as None (unknown), not 0.0.
+    assert score.breakdown["historical_consistency"] is None
+    assert any("historical_consistency" in n for n in builder._notes)
+
+
+def test_add_historical_traces_from_storage_query(tmp_path):
+    # End-to-end: archival retrieval output feeds the trust-score dimension.
+    from evomerge.storage import LocalBackend, TraceStorage
+
+    store = TraceStorage(LocalBackend(tmp_path), granularity="day")
+    store.write([
+        {"rollout_id": "r1", "subject_id": "s1", "timestamp": "2026-06-01T00:00:00Z",
+         "objective_status": "pass"},
+        {"rollout_id": "r2", "subject_id": "s1", "timestamp": "2026-06-02T00:00:00Z",
+         "objective_status": "fail"},
+    ])
+    traces = store.query(subject_id="s1")
+    score = AgentTrustScoreBuilder().add_historical_traces(traces).build()
+    assert score.breakdown["historical_consistency"] == pytest.approx(0.5)
+
