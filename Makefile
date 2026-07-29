@@ -119,6 +119,10 @@ sync-schemas:  ## Sync schemas from wasmagent-js (pass WASMAGENT_JS=/path/to/rep
 	fi
 	$(PYTHON) scripts/sync-wasmagent-schemas.py --wasmagent-js $(WASMAGENT_JS)
 
+.PHONY: drift-gate
+drift-gate:  ## Fail if any local schema re-forks a canonical $id from wasmagent-protocol.
+	@$(PYTHON) scripts/check-schema-drift.py --check
+
 # ============================================================================
 # Paper artifacts
 # ============================================================================
@@ -143,7 +147,7 @@ paper-fast: figures  ## Rebuild arxiv tar without compile sanity check (no tecto
 all: test lint schema-check figures paper  ## test + lint + schema-check + figures + paper.
 
 .PHONY: ci
-ci: pytest lint schema-check reproducer self-test examples  ## What CI runs (no paper compile).
+ci: pytest lint schema-check drift-gate reproducer self-test examples  ## What CI runs (no paper compile).
 
 # ============================================================================
 # Pipeline CLI shortcuts
