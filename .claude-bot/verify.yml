@@ -1,13 +1,35 @@
+# .claude-bot/verify.yml — trace-pipeline (pip package: evomerge)
+# Mirrors `make ci` (pytest + ruff + schema-check + reproducer + self-test).
+# This runner uses an externally-managed (PEP 668) Python, so a bare
+# `pip install --user` fails. We use a gitignored .venv, placed on the shared
+# bigdisk when available (mounted at /mnt/bigdisk) and falling back to a local
+# .venv-local otherwise, so a mount outage degrades gracefully. Each command
+# runs in its own shell, so the venv is referenced by path, not activated.
 commands:
-  - name: pip-install
-    cmd: "if [ -d .venv ]; then .venv/bin/pip install -e \".[dev]\" -q 2>/dev/null || .venv/bin/pip install -e . -q 2>/dev/null || true; else pip install -e \".[dev]\" -q 2>/dev/null || pip install -e . -q 2>/dev/null || true; fi"
-    timeout: 3m
+  - name: install
+    cmd: >-
+      SLUG=$(basename "$PWD");
+      if timeout 8 bash -c "test -d /mnt/bigdisk/venv && touch /mnt/bigdisk/venv/.probe-$SLUG 2>/dev/null && rm -f /mnt/bigdisk/venv/.probe-$SLUG" 2>/dev/null;
+      then VENV=/mnt/bigdisk/venv/$SLUG; echo "[venv] bigdisk: $VENV";
+      else VENV="$PWD/.venv-local"; echo "[venv] local fallback: $VENV"; fi;
+      { [ -x "$VENV/bin/python" ] || python3 -m venv "$VENV"; }
+      && rm -rf .venv && ln -sfn "$VENV" .venv
+      && .venv/bin/pip install -e ".[dev]" -q --no-cache-dir
+    timeout: 5m
     level: 1
-  - name: ruff
-    cmd: "if [ -d .venv ] && [ -x .venv/bin/ruff ]; then .venv/bin/ruff check . ; else ruff check . ; fi"
-    timeout: 3m
+  - name: import
+    cmd: .venv/bin/python -c "import evomerge; import eval_trust"
+    timeout: 30s
+    level: 1
+  - name: lint
+    cmd: .venv/bin/python -m ruff check eval_trust/ evomerge/ scripts/ tests/ run_audit.py papers/eval_trust/scripts/ benchmarks/ examples/
+    timeout: 2m
+    level: 2
+  - name: schema-check
+    cmd: .venv/bin/python scripts/check-schema-fields.py
+    timeout: 2m
     level: 2
   - name: pytest
-    cmd: "if [ -d .venv ]; then .venv/bin/pytest -x -q 2>/dev/null || .venv/bin/pytest tests/ -x -q; else pytest -x -q 2>/dev/null || pytest tests/ -x -q; fi"
-    timeout: 5m
+    cmd: .venv/bin/python -m pytest tests/ -x -q
+    timeout: 8m
     level: 3
