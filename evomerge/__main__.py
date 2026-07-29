@@ -26,6 +26,8 @@ Commands:
   import-a2a-task       Convert A2A (Agent-to-Agent) task trace JSONL to AEP JSONL
   audit-report          Generate a combined AEP/lint/provenance audit report (Markdown)
   trust-score           Compute composite AgentTrustScore for an agent run
+  replay                Deterministically re-execute recorded AEP traces
+                        (side-effect mocking + state snapshot/restore; debug mode)
   registry-register     Register an artifact in the Agent Evidence Registry
   registry-list         List entries in the Agent Evidence Registry
 
@@ -1050,6 +1052,75 @@ def _cmd_trust_score(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# replay (reproducible trace replay framework)
+# ---------------------------------------------------------------------------
+
+def _cmd_replay(args: argparse.Namespace) -> int:
+    """Deterministically re-execute recorded AEP traces.
+
+    Each non-comment line of the AEP JSONL file is replayed independently:
+    state-changing actions are served from a mocked side-effect cassette and
+    the agent-visible state is snapshotted before each action. With
+    ``--debug-action`` the engine stops before that action and reports the
+    state at that step (debug mode for failed trust checks); otherwise every
+    run is scored for replay determinism.
+    """
+    from evomerge.replay import ReplayEngine, regression_test
+
+    aep_path = Path(args.aep)
+    if not aep_path.exists():
+        print(f"[error] AEP file not found: {aep_path}", file=sys.stderr)
+        return 1
+
+    records: list[dict] = []
+    with open(aep_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                print(f"[warn] skipping malformed JSON line: {exc}", file=sys.stderr)
+
+    if not records:
+        print("[error] no AEP records found in input", file=sys.stderr)
+        return 1
+
+    engine = ReplayEngine()
+
+    if args.debug_action:
+        session = engine.replay_debug(records[0], stop_at_action_id=args.debug_action)
+        payload = {
+            "mode": "debug",
+            "run_id": session.result.run_id,
+            "stop_reason": session.stop_reason,
+            "stop_action_id": session.stop_action_id,
+            "state_at_stop": session.state.as_dict(),
+            "state_digest_at_stop": session.state.digest(),
+            "snapshot_count": len(session.state.snapshots),
+            "result": session.result.to_dict(),
+        }
+    else:
+        runs = [engine.replay(rec).to_dict() for rec in records]
+        payload: dict = {"mode": "score", "runs": runs}
+        if len(runs) >= 2:
+            # With two+ runs, also surface a pairwise regression check between
+            # the first two records (baseline vs candidate agent update).
+            report = regression_test(records[0], records[1])
+            payload["regression_first_pair"] = report.to_dict()
+
+    if args.output and args.output != "-":
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(f"[ok] replay report written to {out_path}")
+    else:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # registry-register
 # ---------------------------------------------------------------------------
 
@@ -1329,6 +1400,18 @@ def _build_parser() -> argparse.ArgumentParser:
     ts_p.add_argument("--output", metavar="PATH", default="-",
                       help="output JSON path (default: stdout)")
 
+    # --- replay (reproducible trace replay framework) ---
+    rp_p = sub.add_parser("replay",
+                          help="deterministically re-execute recorded AEP traces "
+                               "(side-effect mocking + state snapshot/restore)")
+    rp_p.add_argument("--aep", metavar="FILE", required=True,
+                      help="AEP records JSONL file (each line: one recorded run)")
+    rp_p.add_argument("--debug-action", metavar="ACTION_ID",
+                      help="debug mode: stop before this action_id and report the "
+                           "state at that step (omit to score every run)")
+    rp_p.add_argument("--output", metavar="PATH", default="-",
+                      help="output JSON path (default: stdout)")
+
     # --- import-terminal-bench ---
     tb_p = sub.add_parser("import-terminal-bench",
                           help="convert Terminal-Bench results JSONL to rollout-wire/v1 or AEP JSONL")
@@ -1439,6 +1522,7 @@ def main(argv: list[str] | None = None) -> int:
         "import-a2a-task": _cmd_import_a2a_task,
         "audit-report": _cmd_audit_report,
         "trust-score": _cmd_trust_score,
+        "replay": _cmd_replay,
         "registry-register": _cmd_registry_register,
         "registry-list": _cmd_registry_list,
     }
