@@ -1,6 +1,6 @@
 # Bot State
 
-_Last updated: 2026-07-30 00:14 UTC by patrol_
+_Last updated: 2026-07-30 00:33 UTC by patrol_
 
 ## Queue
 
@@ -9,17 +9,17 @@ _Last updated: 2026-07-30 00:14 UTC by patrol_
 | Pending | 3 |
 | Active (running/reviewing) | 0 |
 | Blocked | 0 |
-| Completed/Merged (all time) | 21 |
+| Completed/Merged (all time) | 24 |
 
 ## Recent Activity (last 5)
 
 | Issue | Title | Outcome | Date |
 |---|---|---|---|
+| #51 | [milestone Milestone 5 ] Horizontal scaling for trace ing... | completed/retry_cap_reached | 2026-07-30 |
+| #56 | [milestone Milestone 5 ] Trust-score aggregation and serv... | completed/retry_cap_reached | 2026-07-30 |
+| #57 | [milestone Milestone 5 ] Multi-tenant isolation — intro... | completed/retry_cap_reached | 2026-07-30 |
 | #52 | [milestone Milestone 5 ] Streaming compliance evaluation ... | merged/merged | 2026-07-28 |
 | #53 | [milestone Milestone 5 ] Trace archival and retrieval lay... | merged/merged | 2026-07-28 |
-| #54 | [milestone Milestone 5 ] DPO/PPO/SFT training pipeline in... | merged/merged | 2026-07-28 |
-| #47 | Fix WasmAgent/trace-pipeline#41 (Fix WasmAgent/trace-pipe... | merged/merged | 2026-07-28 |
-| #35 | Fix WasmAgent/trace-pipeline#23 ([milestone Milestone 2 ]... | merged/merged | 2026-07-27 |
 
 ---
 _Maintained automatically by claude-bot-go patrol. Do not edit._
