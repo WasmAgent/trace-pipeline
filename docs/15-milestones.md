@@ -56,3 +56,18 @@ some are rejected. Align once canonical `aep/v0.3` ships.
 - [ ] Multi-tenant isolation — introduce tenant-scoped trace segregation (by organization/team boundaries), per-tenant resource quotas, and audit-grade access logging for compliance consumers.
 - [ ] Pipeline health and SLA monitoring — add end-to-end latency tracking, per-stage success rates, alerting on validation failures/backlog buildup, and automated canary testing of schema evolution from `wasmagent-protocol` updates.
 ```
+
+## Milestone 6 — Real-Time Trace Ingestion & AgentBOM-Gated Dataset Pipeline
+
+Building on canonical schema alignment and training record generation, Milestone 6 expands `trace-pipeline` (`evomerge`) into a scalable, enterprise-grade ingestion and synthesis engine featuring stream processing, AgentBOM-informed trust scoring, secret scrubbing, and verifiable dataset lineage.
+
+- [ ] `evomerge/ingest/stream.py` — Implement streaming AEP `v0.3` trace ingestion from blob storage and message buses with low-latency validation and dead-letter queue (DLQ) routing for corrupted records.
+- [ ] `evomerge/sanitize/scrubber.py` — Add automatic PII, API key, and credential sanitization to strip sensitive payloads from tool calls and model responses prior to training dataset compilation.
+- [ ] `evomerge/trust/agentbom.py` — Integrate AgentBOM compliance posture evaluations into `trust_score` calculations, penalizing trajectories that exceed declared tool permission scopes or security baselines.
+- [ ] `evomerge/dataset/counterfactual.py` — Implement counterfactual repair trajectory synthesis, automatically transforming policy violations and execution failures into negative target pairs for DPO dataset generation.
+- [ ] `evomerge/graph/multi_agent.py` — Build multi-agent trace graph merging to stitch parent-child subagent execution trees into unified PPO advantage training records with per-agent credit attribution.
+- [ ] `evomerge/curriculum/sampler.py` — Implement dynamic curriculum sampling and hard-negative trace mining to prioritize high-leverage and policy-critical trajectories during SFT/DPO dataset assembly.
+- [ ] `evomerge/lineage/ledger.py` — Emit W3C PROV-compliant dataset lineage manifests and cryptographic hash chains linking source AEP trace batches directly to compiled training output artifacts.
+- [ ] `evomerge/validate/off_policy.py` — Add off-policy evaluation against `constraint-ir` schemas to verify synthetic trajectories before releasing dataset checkpoints to training runners.
+- [ ] `evomerge/cli/pipeline.py` — Expose unified async pipeline commands (`evomerge pipeline run`) supporting parallelized trace ingestion, filtering, scrubbing, and export.
+- [ ] `tests/test_benchmark_throughput.py` — Add performance and stress testing suite verifying target throughput (>10,000 traces/sec) under streaming ingestion workloads.
