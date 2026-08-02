@@ -1,12 +1,12 @@
 # Bot State
 
-_Last updated: 2026-08-01 10:13 UTC by patrol_
+_Last updated: 2026-08-02 00:24 UTC by patrol_
 
 ## Queue
 
 | State | Count |
 |---|---|
-| Pending | 2 |
+| Pending | 3 |
 | Active (running/reviewing) | 0 |
 | Blocked | 0 |
 | Completed/Merged (all time) | 24 |
@@ -20,6 +20,10 @@ _Last updated: 2026-08-01 10:13 UTC by patrol_
 | #57 | [milestone Milestone 5 ] Multi-tenant isolation — intro... | completed/retry_cap_reached | 2026-07-30 |
 | #52 | [milestone Milestone 5 ] Streaming compliance evaluation ... | merged/merged | 2026-07-28 |
 | #53 | [milestone Milestone 5 ] Trace archival and retrieval lay... | merged/merged | 2026-07-28 |
+
+## Waiting for Human
+
+- #68: [cross-repo] Bug observed in WasmAgent/wasmagent-protocol (job #23698)
 
 ---
 _Maintained automatically by claude-bot-go patrol. Do not edit._
