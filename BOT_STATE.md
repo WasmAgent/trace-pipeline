@@ -1,14 +1,14 @@
 # Bot State
 
-_Last updated: 2026-08-02 00:25 UTC by patrol_
+_Last updated: 2026-08-02 02:25 UTC by patrol_
 
 ## Queue
 
 | State | Count |
 |---|---|
-| Pending | 2 |
-| Active (running/reviewing) | 1 |
-| Blocked | 0 |
+| Pending | 7 |
+| Active (running/reviewing) | 0 |
+| Blocked | 1 |
 | Completed/Merged (all time) | 24 |
 
 ## Recent Activity (last 5)
@@ -23,7 +23,9 @@ _Last updated: 2026-08-02 00:25 UTC by patrol_
 
 ## Waiting for Human
 
+- #69: [milestone Milestone 6 ] `evomerge/ingest/stream.py` — Implement streaming AEP `v0.3` trace ingestion f...
 - #68: [cross-repo] Bug observed in WasmAgent/wasmagent-protocol (job #23698)
+- #66: fix: pre-existing ruff lint failures on main — unused import + quoted type annotation
 
 ---
 _Maintained automatically by claude-bot-go patrol. Do not edit._
