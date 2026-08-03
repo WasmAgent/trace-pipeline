@@ -9,7 +9,7 @@
 
 **Measurement trust and trace-to-training backend for WasmAgent.**
 
-**Install:** `pip install evomerge`
+**Install:** `pip install -e .` (PyPI package coming soon)
 **CLI:**     `evomerge validate-aep / evomerge export / evomerge audit-report`
 **Brand:**   WasmAgent Trace Pipeline
 
@@ -17,7 +17,7 @@
 
 > **Naming note** — three layers, one project:
 > - **`trace-pipeline`** — this GitHub repository (umbrella project)
-> - **`evomerge`** — the pip package (`pip install evomerge`) and CLI (`evomerge …`)
+> - **`evomerge`** — the Python package (install with `pip install -e .`) and CLI (`evomerge …`)
 > - **`eval_trust`** — a submodule inside this repo; imported as `from eval_trust import …`
 
 This repository is the **third layer** of the WasmAgent Trustworthy Agent Training Loop:
