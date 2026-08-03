@@ -29,7 +29,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
 
-from evomerge.trust_score import AgentTrustScoreBuilder, compute_trust_score
+from evomerge.trust_score import compute_trust_score
 
 __all__ = [
     "AggregatedTrustScore",
@@ -225,7 +225,8 @@ class RedisCache:
         return AggregatedTrustScore(**data)
 
     def set(self, subject_id: str, score: AggregatedTrustScore) -> None:
-        import dataclasses, json
+        import dataclasses
+        import json
         raw = json.dumps(dataclasses.asdict(score))
         self._r.setex(self._key(subject_id), self._ttl, raw)
 
@@ -258,7 +259,7 @@ class MemcachedCache:
         return f"{self._prefix}{subject_id}"
 
     def get(self, subject_id: str) -> AggregatedTrustScore | None:
-        import dataclasses, json
+        import json
         raw = self._client.get(self._key(subject_id))
         if raw is None:
             return None
@@ -266,7 +267,8 @@ class MemcachedCache:
         return AggregatedTrustScore(**data)
 
     def set(self, subject_id: str, score: AggregatedTrustScore) -> None:
-        import dataclasses, json
+        import dataclasses
+        import json
         raw = json.dumps(dataclasses.asdict(score))
         self._client.set(self._key(subject_id), raw, expire=self._ttl)
 

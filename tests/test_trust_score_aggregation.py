@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from evomerge.trust_score_aggregation import (
     AggregatedTrustScore,
     TrustMetrics,
@@ -21,7 +19,6 @@ from evomerge.trust_score_aggregation import (
     TrustScoreServer,
     TrustScoreStore,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

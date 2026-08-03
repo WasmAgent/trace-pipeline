@@ -312,7 +312,7 @@ class AuditEvent:
         )
 
     @classmethod
-    def from_json(cls, line: str) -> "AuditEvent":
+    def from_json(cls, line: str) -> AuditEvent:
         data = json.loads(line)
         return cls(**data)
 

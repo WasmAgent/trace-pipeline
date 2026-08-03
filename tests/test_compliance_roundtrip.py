@@ -5,24 +5,19 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from evomerge.schemas.compliance import (
-    ComplianceEvalRecord,
     ComplianceError,
+    ComplianceEvalRecord,
     ConstraintCategory,
-    ConstraintIR,
     ConstraintLevel,
     ConstraintViolation,
     EvidenceSpan,
-    RepairPolicy,
     RepairStrategy,
     RepairTraceEntry,
     RunMode,
     TokenCost,
     ViolationStage,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

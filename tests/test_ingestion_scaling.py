@@ -17,7 +17,6 @@ from evomerge.ingestion_scaling import (
     IngestionPipeline,
     QueueFullError,
     ShardRouter,
-    ShardedBatch,
     ValidationWorkerPool,
 )
 
@@ -183,7 +182,7 @@ class TestValidationWorkerPool:
         records = [_aep(f"r{i}", f"u{i}", f"s{i}") for i in range(5)]
         pairs = pool.validate_batch(records)
         assert len(pairs) == 5
-        for rec, result in pairs:
+        for _rec, result in pairs:
             assert result.valid_schema, f"Expected valid but got errors: {result.errors}"
 
     def test_invalid_records_caught(self):

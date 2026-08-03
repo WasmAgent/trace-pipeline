@@ -32,7 +32,7 @@ from __future__ import annotations
 import hashlib
 import queue
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
