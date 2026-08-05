@@ -1,0 +1,705 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wasmagent.dev/schemas/agentbom/v0.1.schema.json",
+  "title": "AgentBOM",
+  "description": "Agent Bill of Materials v0.1 \u2014 shipped specification schema",
+  "type": "object",
+  "required": [
+    "agentbom_version",
+    "identity",
+    "attestation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "agentbom_version": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ],
+      "description": "Always \"0.1\""
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "agent_id",
+        "agent_name",
+        "generated_at"
+      ],
+      "additionalProperties": false,
+      "description": "Agent ID, name, version, deployment context",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "Unique agent identifier"
+        },
+        "agent_name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "agent_version": {
+          "type": "string",
+          "description": "Semantic version"
+        },
+        "deployment_context": {
+          "type": "string",
+          "enum": [
+            "development",
+            "staging",
+            "production"
+          ],
+          "description": "Deployment environment"
+        },
+        "generated_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+          "description": "Generation timestamp in ISO 8601 format"
+        }
+      }
+    },
+    "model_layer": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model_id"
+      ],
+      "additionalProperties": false,
+      "description": "Model provider, model ID, version, capabilities",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Model provider"
+        },
+        "model_id": {
+          "type": "string",
+          "description": "Model identifier"
+        },
+        "model_version": {
+          "type": "string",
+          "description": "Model version or snapshot"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Declared capabilities"
+        }
+      }
+    },
+    "tool_layer": {
+      "type": "array",
+      "description": "Registered tools, MCP servers, tool permissions, skills",
+      "items": {
+        "type": "object",
+        "required": [
+          "tool_id",
+          "tool_name",
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tool_id": {
+            "type": "string",
+            "description": "Unique tool identifier"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Tool name"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "builtin",
+              "plugin"
+            ],
+            "description": "Tool source type"
+          },
+          "mcp_server_id": {
+            "type": "string",
+            "description": "MCP server identifier if source is mcp"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills or capabilities this tool contributes to the agent"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Permission scopes this tool requires"
+          },
+          "risk_signals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Known risk signals for this tool"
+          }
+        }
+      }
+    },
+    "prompt_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "System prompt references, template IDs, prompt version tracking",
+      "properties": {
+        "system_prompt_hash": {
+          "type": "string",
+          "description": "SHA-256 of system prompt"
+        },
+        "prompt_version": {
+          "type": "string",
+          "description": "Version identifier for the active prompt set"
+        },
+        "template_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Referenced prompt template IDs"
+        },
+        "templates": {
+          "type": "array",
+          "description": "Versioned prompt template references",
+          "items": {
+            "type": "object",
+            "required": [
+              "template_id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "template_id": {
+                "type": "string",
+                "description": "Prompt template identifier"
+              },
+              "version": {
+                "type": "string",
+                "description": "Template version (semver or snapshot)"
+              },
+              "hash": {
+                "type": "string",
+                "description": "SHA-256 hash of the template content"
+              }
+            }
+          }
+        }
+      }
+    },
+    "permission_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Granted scopes, data access boundaries, credential references",
+      "properties": {
+        "granted_scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "All granted permission scopes"
+        },
+        "data_access": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Data sources the agent can access"
+        },
+        "credential_references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Credential type references (no secrets)"
+        }
+      }
+    },
+    "policy_definitions": {
+      "type": "array",
+      "description": "Governance policies, constraints, and compliance rules that govern agent behavior",
+      "items": {
+        "type": "object",
+        "required": [
+          "policy_id",
+          "policy_name",
+          "policy_type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "policy_id": {
+            "type": "string",
+            "description": "Unique policy identifier"
+          },
+          "policy_name": {
+            "type": "string",
+            "description": "Human-readable policy name"
+          },
+          "policy_type": {
+            "type": "string",
+            "description": "Policy type or category (e.g., content_filter, rate_limit, data_handling, compliance)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Policy version (semver)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what the policy governs"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Declarative policy rules or constraint expressions"
+          }
+        }
+      }
+    },
+    "evidence_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "AEP event references, runtime evidence hashes",
+      "properties": {
+        "aep_references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "AEP event IDs or hashes"
+        },
+        "evidence_hashes": {
+          "type": "array",
+          "description": "Evidence entries with type, hash, and timestamp",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "hash"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Evidence type"
+              },
+              "hash": {
+                "type": "string",
+                "description": "Evidence hash value"
+              },
+              "timestamp": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+                "description": "Timestamp in ISO 8601 format"
+              }
+            }
+          }
+        }
+      }
+    },
+    "audit_log": {
+      "type": "array",
+      "description": "Structured audit trail entries",
+      "items": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "event_type",
+          "actor"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+            "description": "Event timestamp in ISO 8601 format"
+          },
+          "event_type": {
+            "type": "string",
+            "description": "Type of audit event (e.g., tool_call, permission_check, prompt_injection_attempt)"
+          },
+          "actor": {
+            "type": "string",
+            "description": "Entity that performed the action (user ID, system component, or external service)"
+          },
+          "resource": {
+            "type": "string",
+            "description": "Target resource identifier affected by the event"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure",
+              "partial"
+            ],
+            "description": "Event outcome status"
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional event-specific context and metadata",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "risk_layer": {
+      "type": "array",
+      "description": "Known risk signals, open findings",
+      "items": {
+        "type": "object",
+        "required": [
+          "risk_id",
+          "severity",
+          "category",
+          "description",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "risk_id": {
+            "type": "string",
+            "description": "Unique risk identifier"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ],
+            "description": "Risk severity level"
+          },
+          "category": {
+            "type": "string",
+            "description": "Risk category"
+          },
+          "description": {
+            "type": "string",
+            "description": "Risk description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "mitigated",
+              "accepted"
+            ],
+            "description": "Risk status"
+          }
+        }
+      }
+    },
+    "workflow_layer": {
+      "type": "array",
+      "description": "Action pathway definitions \u2014 workflows, pipelines, and decision sequences that define how the agent executes tasks",
+      "items": {
+        "type": "object",
+        "required": [
+          "workflow_id",
+          "workflow_name",
+          "steps"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "description": "Unique workflow identifier"
+          },
+          "workflow_name": {
+            "type": "string",
+            "description": "Human-readable workflow name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Workflow description"
+          },
+          "version": {
+            "type": "string",
+            "description": "Workflow definition version (semver)"
+          },
+          "steps": {
+            "type": "array",
+            "description": "Ordered list of steps in this workflow",
+            "items": {
+              "type": "object",
+              "required": [
+                "step_id",
+                "action"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "step_id": {
+                  "type": "string",
+                  "description": "Unique step identifier within the workflow"
+                },
+                "action": {
+                  "type": "string",
+                  "description": "Action to perform (tool_id, prompt, sub_workflow, decision)"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Step description"
+                },
+                "input": {
+                  "type": "string",
+                  "description": "Input reference or template"
+                },
+                "output": {
+                  "type": "string",
+                  "description": "Expected output reference"
+                },
+                "depends_on": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Step IDs this step depends on"
+                },
+                "allowed_tools": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tool IDs allowed at this step"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agent_collaboration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Multi-agent collaboration topology \u2014 peer agents, delegation boundaries, and shared resource access patterns",
+      "properties": {
+        "peer_agents": {
+          "type": "array",
+          "description": "Known peer agents this agent collaborates with",
+          "items": {
+            "type": "object",
+            "required": [
+              "agent_id",
+              "role"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "description": "Unique identifier of the peer agent"
+              },
+              "agent_name": {
+                "type": "string",
+                "description": "Human-readable name of the peer agent"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "supervisor",
+                  "delegate",
+                  "peer",
+                  "subordinate"
+                ],
+                "description": "Collaboration role relative to this agent"
+              },
+              "trust_level": {
+                "type": "string",
+                "enum": [
+                  "full",
+                  "restricted",
+                  "minimal",
+                  "none"
+                ],
+                "description": "Trust level assigned to this peer agent"
+              },
+              "agentbom_ref": {
+                "type": "string",
+                "description": "URI or hash reference to the peer agent's AgentBOM"
+              }
+            }
+          }
+        },
+        "delegation_boundaries": {
+          "type": "array",
+          "description": "Rules governing what this agent can delegate to peers and what it accepts from them",
+          "items": {
+            "type": "object",
+            "required": [
+              "boundary_id",
+              "direction",
+              "constraint_type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "boundary_id": {
+                "type": "string",
+                "description": "Unique boundary identifier"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "outbound",
+                  "inbound",
+                  "bidirectional"
+                ],
+                "description": "Direction of the delegation boundary"
+              },
+              "constraint_type": {
+                "type": "string",
+                "description": "Type of constraint (e.g., tool_delegation, data_sharing, permission_propagation)"
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of the boundary rule"
+              },
+              "target_agents": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Agent IDs this boundary applies to (empty means all peers)"
+              },
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Actions permitted within this boundary"
+              },
+              "max_delegation_depth": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Maximum depth of transitive delegation (0 = no transitive delegation)"
+              }
+            }
+          }
+        },
+        "shared_resources": {
+          "type": "array",
+          "description": "Resources shared across agent collaboration boundaries",
+          "items": {
+            "type": "object",
+            "required": [
+              "resource_id",
+              "resource_type",
+              "access_pattern"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "resource_id": {
+                "type": "string",
+                "description": "Unique resource identifier"
+              },
+              "resource_type": {
+                "type": "string",
+                "description": "Type of shared resource (e.g., datastore, file_system, api_endpoint, message_queue)"
+              },
+              "access_pattern": {
+                "type": "string",
+                "enum": [
+                  "read_only",
+                  "write_only",
+                  "read_write",
+                  "exclusive"
+                ],
+                "description": "Access pattern for the shared resource"
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the shared resource and its purpose"
+              },
+              "accessing_agents": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Agent IDs that access this resource"
+              },
+              "isolation_level": {
+                "type": "string",
+                "enum": [
+                  "shared",
+                  "partitioned",
+                  "isolated"
+                ],
+                "description": "Resource isolation level between agents"
+              }
+            }
+          }
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Artifact lifecycle management \u2014 registry location, publication metadata, deprecation, and supersession",
+      "properties": {
+        "registry_uri": {
+          "type": "string",
+          "format": "uri",
+          "description": "URI of the distribution registry where this artifact is published"
+        },
+        "publication_timestamp": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+          "description": "Timestamp when the artifact was published to the registry, in ISO 8601 format"
+        },
+        "deprecation_status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "deprecated",
+            "superseded",
+            "withdrawn"
+          ],
+          "description": "Current deprecation status of the artifact in the registry"
+        },
+        "supersedes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Artifact IDs that this distribution supersedes"
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "required": [
+        "generator"
+      ],
+      "additionalProperties": false,
+      "description": "Generator, timestamp, hash, signature",
+      "properties": {
+        "generator": {
+          "type": "string",
+          "description": "Tool or process that generated this AgentBOM"
+        },
+        "generator_version": {
+          "type": "string",
+          "description": "Generator version"
+        },
+        "agentbom_hash": {
+          "type": "string",
+          "description": "SHA-256 of canonical AgentBOM JSON"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Cryptographic signature of the AgentBOM for verification"
+        },
+        "timestamp": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+          "description": "Attestation timestamp in ISO 8601 format"
+        }
+      }
+    }
+  }
+}
