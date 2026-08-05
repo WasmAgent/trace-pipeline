@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TrustPassport",
+  "type": "object",
+  "required": [
+    "passport_version",
+    "identity",
+    "validity",
+    "revocation",
+    "attestation"
+  ],
+  "properties": {
+    "passport_version": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "passport_id",
+        "agent_id",
+        "issuer"
+      ],
+      "properties": {
+        "passport_id": {
+          "type": "string"
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "issuance_context": {
+          "type": "string",
+          "enum": [
+            "self-issued",
+            "trustavo"
+          ]
+        }
+      }
+    },
+    "agentbom_ref": {
+      "type": "object",
+      "properties": {
+        "agentbom_id": {
+          "type": "string"
+        },
+        "agentbom_hash": {
+          "type": "string"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "audit_ref": {
+      "type": "object",
+      "properties": {
+        "report_id": {
+          "type": "string"
+        },
+        "report_hash": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "posture_ref": {
+      "type": "object",
+      "properties": {
+        "snapshot_id": {
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "type": "string"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "evidence_summary": {
+      "type": "object",
+      "properties": {
+        "evidence_quality": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "insufficient"
+          ]
+        },
+        "framework_mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "framework",
+              "coverage"
+            ],
+            "properties": {
+              "framework": {
+                "type": "string"
+              },
+              "coverage": {
+                "type": "string",
+                "enum": [
+                  "selected_technical_evidence",
+                  "partial",
+                  "none"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "risk_summary": {
+      "type": "object",
+      "properties": {
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "medium": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "low": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_findings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "validity": {
+      "type": "object",
+      "required": [
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "renewal_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "revocation": {
+      "type": "object",
+      "properties": {
+        "revoked": {
+          "type": "boolean"
+        },
+        "revoked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revocation_reason": {
+          "type": "string"
+        },
+        "revocation_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "required": [
+        "issuer"
+      ],
+      "properties": {
+        "issuer": {
+          "type": "string"
+        },
+        "signing_method": {
+          "type": "string",
+          "enum": [
+            "none",
+            "sigstore",
+            "ed25519"
+          ]
+        },
+        "passport_hash": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$id": "https://wasmagent.dev/schemas/trust-passport/v0.1.schema.json",
+  "description": "Agent Trust Passport v0.1 \u2014 canonical schema. The authoritative source for this schema is WasmAgent/wasmagent-protocol."
+}

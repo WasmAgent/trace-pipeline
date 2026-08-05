@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wasmagent.dev/schemas/mcp-posture/v0.1.schema.json",
+  "title": "MCPPosture",
+  "description": "MCP Posture snapshot v0.1 \u2014 shipped specification schema",
+  "type": "object",
+  "required": [
+    "posture_version",
+    "identity",
+    "servers",
+    "attestation"
+  ],
+  "properties": {
+    "posture_version": {
+      "type": "string",
+      "enum": [
+        "0.1"
+      ]
+    },
+    "protocol_version": {
+      "type": "string",
+      "description": "MCP specification version under which this snapshot was captured. Use '2026-07-28' for the stateless/handle-based spec or omit for pre-2026-07-28 deployments.",
+      "examples": [
+        "2026-07-28"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "snapshot_id",
+        "agent_id",
+        "captured_at"
+      ],
+      "properties": {
+        "snapshot_id": {
+          "type": "string"
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "previous_snapshot_id": {
+          "type": "string"
+        }
+      }
+    },
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "server_id",
+          "server_name",
+          "tools"
+        ],
+        "properties": {
+          "server_id": {
+            "type": "string"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "unverified",
+              "unknown"
+            ]
+          },
+          "session_model": {
+            "type": "string",
+            "enum": [
+              "stateful",
+              "stateless-handle",
+              "unknown"
+            ],
+            "description": "MCP session architecture: stateless-handle = MCP 2026-07-28+ spec; stateful = pre-2026-07-28."
+          },
+          "handle_expiry_policy": {
+            "type": "string",
+            "enum": [
+              "short-lived",
+              "long-lived",
+              "unset"
+            ],
+            "description": "Handle expiry policy under stateless-handle session model (MCP 2026-07-28+)."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tool_id",
+                "tool_name"
+              ],
+              "properties": {
+                "tool_id": {
+                  "type": "string"
+                },
+                "tool_name": {
+                  "type": "string"
+                },
+                "permissions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "risk_categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "ssrf",
+                      "exfiltration",
+                      "command_execution",
+                      "privilege_escalation",
+                      "prompt_injection",
+                      "credential_access",
+                      "supply_chain",
+                      "mcp_header_leakage"
+                    ]
+                  }
+                },
+                "risk_severity": {
+                  "type": "string",
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low",
+                    "info"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "permission_graph": {
+      "type": "object",
+      "properties": {
+        "total_tools": {
+          "type": "integer"
+        },
+        "total_permissions": {
+          "type": "integer"
+        },
+        "high_risk_tools": {
+          "type": "integer"
+        },
+        "permission_scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "risk_summary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "severity",
+          "category",
+          "description"
+        ],
+        "properties": {
+          "finding_id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ssrf",
+              "exfiltration",
+              "command_execution",
+              "privilege_escalation",
+              "prompt_injection",
+              "credential_access",
+              "supply_chain",
+              "mcp_header_leakage"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "tool_id": {
+            "type": "string"
+          },
+          "owasp_mcp_ref": {
+            "type": "string"
+          },
+          "owasp_agentic_ref": {
+            "type": "string",
+            "description": "Reference to OWASP Agentic Applications Top 10 (2026) entry, e.g. ASI01."
+          }
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "properties": {
+        "servers_added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "servers_removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tools_added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tools_removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "permissions_expanded": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "permissions_reduced": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verification_endpoint": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL for real-time posture verification. Must use HTTPS scheme. Supports token-based authentication (Bearer token in Authorization header). Called with POST method; tokens are managed separately by the verification system.",
+      "pattern": "^https://.+",
+      "examples": [
+        "https://verification.trust.example.com/posture/check"
+      ]
+    },
+    "attestation": {
+      "type": "object",
+      "required": [
+        "generator"
+      ],
+      "properties": {
+        "generator": {
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "type": "string"
+        },
+        "auth": {
+          "type": "object",
+          "description": "OAuth 2.0 / token validation state at capture time (MCP 2026-07-28+ security baseline).",
+          "properties": {
+            "audience_bound_token_validated": {
+              "type": "boolean",
+              "description": "Whether the token used to capture this posture was validated as audience-bound (required by Microsoft MCP security guidance)."
+            },
+            "pkce_used": {
+              "type": "boolean",
+              "description": "Whether PKCE was used in the authorization flow."
+            },
+            "per_client_consent_verified": {
+              "type": "boolean",
+              "description": "Whether per-client consent was verified before tool invocation."
+            }
+          }
+        }
+      }
+    }
+  }
+}
