@@ -27,12 +27,17 @@ SSOT for training output. Confirm the on-disk JSON still matches the models with
 
 The AEP + compliance schemas are canonical in `WasmAgent/wasmagent-protocol`
 (PyPI: `wasmagent-protocol`, npm: `@wasmagent/protocol`). trace-pipeline is a
-consumer: it must not fork or hand-edit these. Canonical SSOT, consumed not owned:
+consumer: it must not fork, hand-edit, or keep local copies of these. The AEP
+record schema is loaded at runtime from the installed package:
 
-  aep-record.schema.json            AEP record (aep-record/v0.2)
+    from wasmagent_protocol import get_schema   # evomerge/validate/aep.py
+    get_schema("aep-record")
 
-`aep-record` is read by `evomerge/validate/aep.py`. Verify trace-pipeline's
-Pydantic models still cover the package's required fields with:
+No `aep-record.schema.json` is kept in this repo. The copy that used to live
+here froze at `aep-record/v0.2` while canonical moved to `aep/v0.4`; it was
+removed rather than refreshed — the validator had already switched to the
+package. Verify the repo's models still cover the package's required fields
+with:
 
     python scripts/sync-wasmagent-schemas.py --check
 
