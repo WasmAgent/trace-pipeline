@@ -1,5 +1,4 @@
 """Tests for evomerge.sanitize.scrubber."""
-import pytest
 from evomerge.sanitize.scrubber import scrub, scrub_message
 
 REDACTED = "[REDACTED]"
