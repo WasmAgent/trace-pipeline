@@ -25,9 +25,10 @@ Typical usage:
 """
 from __future__ import annotations
 
-import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+
+import numpy as np
 
 from evomerge.pipeline.compliance_sft import compliance_to_sft_records
 from evomerge.schemas.compliance import (
@@ -142,7 +143,7 @@ class SyntheticGenerator:
     def __init__(self, chat_fn: ChatFn, config: GenerationConfig | None = None):
         self._chat = chat_fn
         self.config = config or GenerationConfig()
-        self._rng = random.Random(self.config.seed)
+        self._rng = np.random.default_rng(self.config.seed)
 
     def _call(self, messages: list[dict[str, str]]) -> str:
         return self._chat(messages)
@@ -198,13 +199,16 @@ class SyntheticGenerator:
             )
 
         # --- bad outputs → DPO pairs + repair SFT ---
-        violations = self._rng.sample(
-            self.config.violation_types,
-            min(self.config.n_bad_per_template, len(self.config.violation_types)),
+        violations = list(
+            self._rng.choice(
+                self.config.violation_types,
+                size=min(self.config.n_bad_per_template, len(self.config.violation_types)),
+                replace=False,
+            )
         )
         for violation in violations:
             bad_text = self._call(_bad_prompt(spec, violation))
-            chosen = self._rng.choice(good_outputs) if good_outputs else ""
+            chosen = str(self._rng.choice(good_outputs)) if good_outputs else ""
             if chosen:
                 dpo.append(
                     DpoTrainingRecord(

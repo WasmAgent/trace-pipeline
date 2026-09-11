@@ -7,9 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
-OUT = Path(__file__).parent.parent / "data" / "smoke"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from evomerge.paths import output_path  # noqa: E402
+
+OUT = output_path(Path(__file__).parent.parent / "data" / "smoke")
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -79,7 +84,7 @@ for i, (run_id, task_uri, model_id, provider, passed) in enumerate(AEP_TASKS):
     }
     aep_records.append(record)
 
-aep_path = OUT / "aep-smoke.jsonl"
+aep_path = output_path(OUT / "aep-smoke.jsonl")
 with open(aep_path, "w") as f:
     for r in aep_records:
         f.write(json.dumps(r) + "\n")
@@ -135,7 +140,7 @@ for i, (rollout_id, task, obj_score) in enumerate(ROLLOUT_TASKS):
     }
     rollout_records.append(record)
 
-rollout_path = OUT / "rollout-smoke.jsonl"
+rollout_path = output_path(OUT / "rollout-smoke.jsonl")
 with open(rollout_path, "w") as f:
     for r in rollout_records:
         f.write(json.dumps(r) + "\n")

@@ -30,6 +30,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from evomerge.paths import output_path  # noqa: E402
+
 
 def _content_hash(rec: dict) -> str:
     # Dedup: exact content match only (full last-message hash)
@@ -123,8 +125,8 @@ def main() -> int:
             print(f"  DPO {src.name}: {len(records)} loaded, {added} new")
 
     # ── write ─────────────────────────────────────────────────────────────────
-    sft_path = out / "sft_merged.jsonl"
-    dpo_path = out / "dpo_merged.jsonl"
+    sft_path = output_path(out / "sft_merged.jsonl")
+    dpo_path = output_path(out / "dpo_merged.jsonl")
 
     with open(sft_path, "w") as fh:
         for r in all_sft:

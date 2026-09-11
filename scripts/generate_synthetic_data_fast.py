@@ -80,14 +80,14 @@ def main() -> int:
         "ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-latest"
     )
 
-    import random
+    import numpy as np
 
     from evomerge.schemas.training import DpoTrainingRecord, Message, Provenance, SftTrainingRecord
     from evomerge.synthesize.generator import _bad_prompt, _good_prompt, _repair_prompt
     from evomerge.synthesize.templates import builtin_templates
 
     templates = builtin_templates()
-    rng = random.Random(42)
+    rng = np.random.default_rng(42)
 
     violation_types = [
         "missing required sections",
@@ -103,7 +103,12 @@ def main() -> int:
     for spec_name, spec in templates.items():
         for _ in range(args.n_per_template):
             jobs.append(("good", spec_name, spec, None))
-        violations = rng.sample(violation_types, min(args.n_bad_per_template, len(violation_types)))
+        violations = [
+            str(v)
+            for v in rng.choice(
+                violation_types, size=min(args.n_bad_per_template, len(violation_types)), replace=False
+            )
+        ]
         for v in violations:
             jobs.append(("bad", spec_name, spec, v))
 
@@ -197,7 +202,7 @@ def main() -> int:
             # DPO pair
             chosen_list = good_outputs.get(spec_name, [])
             if chosen_list:
-                chosen = rng.choice(chosen_list)
+                chosen = str(rng.choice(chosen_list))
                 if chosen != bad_text:
                     dpo_records.append(DpoTrainingRecord(
                         messages=[

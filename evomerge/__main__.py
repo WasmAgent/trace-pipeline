@@ -40,6 +40,8 @@ import json
 import sys
 from pathlib import Path
 
+from evomerge.paths import output_path
+
 # ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
@@ -458,7 +460,7 @@ def _cmd_import_bfcl(args: argparse.Namespace) -> int:
     pairs = adapter.load_jsonl(args.input)
     rollouts = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in rollouts:
@@ -492,7 +494,7 @@ def _cmd_import_mcp_atlas(args: argparse.Namespace) -> int:
     else:
         records = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -551,7 +553,7 @@ def _cmd_import_oai_agents(args: argparse.Namespace) -> int:
     traces = load_oai_trace_jsonl(args.input)
     records = [oai_trace_to_aep(t) for t in traces]
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -579,7 +581,7 @@ def _cmd_import_langsmith(args: argparse.Namespace) -> int:
     traces = load_ls_trace_jsonl(args.input)
     records = [ls_trace_to_aep(t) for t in traces]
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -613,7 +615,7 @@ def _cmd_import_terminal_bench(args: argparse.Namespace) -> int:
     else:
         records = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -647,7 +649,7 @@ def _cmd_import_tau_bench(args: argparse.Namespace) -> int:
     else:
         records = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -681,7 +683,7 @@ def _cmd_import_tool_sandbox(args: argparse.Namespace) -> int:
     else:
         records = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -715,7 +717,7 @@ def _cmd_import_agent_harm(args: argparse.Namespace) -> int:
     else:
         records = adapter.to_rollouts(pairs)
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -819,7 +821,7 @@ def _cmd_import_otel(args: argparse.Namespace) -> int:
             "created_at_ms": 0,
         })
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -851,7 +853,7 @@ def _cmd_import_ms_agent_framework(args: argparse.Namespace) -> int:
     runs = load_ms_workflow_jsonl(args.input)
     records = [ms_workflow_to_aep(r) for r in runs]
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -879,7 +881,7 @@ def _cmd_import_adk(args: argparse.Namespace) -> int:
     traces = load_adk_trace_jsonl(args.input)
     records = [adk_trace_to_aep(t) for t in traces]
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -907,7 +909,7 @@ def _cmd_import_a2a_task(args: argparse.Namespace) -> int:
     tasks = load_a2a_task_jsonl(args.input)
     records = [a2a_task_to_aep(t) for t in tasks]
 
-    out_path = Path(args.output)
+    out_path = output_path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as fh:
         for record in records:
@@ -935,7 +937,7 @@ def _cmd_audit_report(args: argparse.Namespace) -> int:
     report = generate_audit_report(config)
 
     if args.output and args.output != "-":
-        out_path = Path(args.output)
+        out_path = output_path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report, encoding="utf-8")
         print(f"[ok] wrote audit report to {out_path}")
@@ -1042,7 +1044,7 @@ def _cmd_trust_score(args: argparse.Namespace) -> int:
     output_payload = results[0] if len(results) == 1 else {"groups": results}
 
     if args.output and args.output != "-":
-        out_path = Path(args.output)
+        out_path = output_path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(output_payload, indent=2, ensure_ascii=False))
         print(f"[ok] trust score written to {out_path}")
@@ -1111,7 +1113,7 @@ def _cmd_replay(args: argparse.Namespace) -> int:
             payload["regression_first_pair"] = report.to_dict()
 
     if args.output and args.output != "-":
-        out_path = Path(args.output)
+        out_path = output_path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
         print(f"[ok] replay report written to {out_path}")

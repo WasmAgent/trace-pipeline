@@ -137,8 +137,11 @@ class EvalHarness:
         """Write raw EvalRecord list to JSONL for downstream analysis."""
         from dataclasses import asdict
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as fh:
+        from evomerge.paths import output_path
+
+        target = output_path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w") as fh:
             for r in records:
                 fh.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
 

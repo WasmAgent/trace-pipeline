@@ -30,6 +30,8 @@ default in-process queue.
 from __future__ import annotations
 
 import hashlib
+import io
+import pickle
 import queue
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -203,6 +205,25 @@ class BackpressureQueue:
         return items
 
 
+class _PayloadUnpickler(pickle.Unpickler):
+    """Unpickler that refuses any global class lookup.
+
+    Queue payloads are plain data (dicts, lists, scalars) produced by
+    :meth:`RedisQueue.put`. A hostile payload must not be able to execute
+    code during deserialization, so instantiating any class — the mechanism
+    pickle exploits — is rejected outright.
+    """
+
+    def find_class(self, module: str, name: str) -> None:
+        raise pickle.UnpicklingError(
+            f"queue payload may not reference globals: {module}.{name}"
+        )
+
+
+def _safe_loads(data: bytes) -> Any:
+    return _PayloadUnpickler(io.BytesIO(data)).load()
+
+
 class RedisQueue:
     """Drop-in adapter backed by Redis (requires ``redis`` package).
 
@@ -223,20 +244,16 @@ class RedisQueue:
         self._maxsize = maxsize
 
     def put(self, item: Any, timeout: float | None = None) -> None:  # noqa: ARG002
-        import pickle
-
         if self._maxsize and self._r.llen(self._key) >= self._maxsize:
             raise QueueFullError(f"Redis queue '{self._key}' is at capacity ({self._maxsize})")
         self._r.rpush(self._key, pickle.dumps(item))
 
     def get(self, block: bool = True, timeout: float | None = None) -> Any:
-        import pickle
-
         if block:
             result = self._r.blpop(self._key, timeout=int(timeout or 0))
-            return pickle.loads(result[1]) if result else None
+            return _safe_loads(result[1]) if result else None
         result = self._r.lpop(self._key)
-        return pickle.loads(result) if result else None
+        return _safe_loads(result) if result else None
 
 
 # ---------------------------------------------------------------------------

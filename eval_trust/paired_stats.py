@@ -36,6 +36,8 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+import numpy as np
+
 
 def wilson_ci(correct: int, n: int, conf: float = 0.95) -> tuple[float, float]:
     """Wilson score CI for a binomial proportion.
@@ -94,22 +96,20 @@ def paired_bootstrap(
 
     Returns dict with delta_acc, ci_lo, ci_hi, p_two_sided, n_iter, n_problems.
     """
-    import random
-
     if len(correct_a) != len(correct_b):
         raise ValueError("correct_a and correct_b must be the same length (paired design)")
     n = len(correct_a)
     if n == 0:
         return {"delta_acc": 0.0, "ci_lo": 0.0, "ci_hi": 0.0, "p_two_sided": 1.0}
 
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     a_arr = [bool(x) for x in correct_a]
     b_arr = [bool(x) for x in correct_b]
     point = sum(a_arr) / n - sum(b_arr) / n
 
     deltas = []
     for _ in range(n_iter):
-        idxs = [rng.randrange(n) for _ in range(n)]
+        idxs = rng.integers(0, n, size=n)
         acc_a = sum(a_arr[i] for i in idxs) / n
         acc_b = sum(b_arr[i] for i in idxs) / n
         deltas.append(acc_a - acc_b)

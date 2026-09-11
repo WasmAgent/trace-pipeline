@@ -24,11 +24,13 @@ import numpy as np  # noqa: E402
 
 from eval_trust.lm_eval_bridge import pair  # noqa: E402
 from eval_trust.paired_stats import mcnemar_exact  # noqa: E402
+from evomerge.paths import output_path  # noqa: E402
 
 
 def write_synthetic_jsonl(path: Path, accuracies: list[bool]) -> None:
     """Write a fake lm-eval-harness samples_*.jsonl with the given outcomes."""
-    with open(path, "w") as f:
+    target = output_path(path)
+    with open(target, "w") as f:
         for i, correct in enumerate(accuracies):
             row = {
                 "doc_id": i,
