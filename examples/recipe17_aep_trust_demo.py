@@ -103,6 +103,11 @@ trust = builder.build()
 print(f"  overall score : {trust.overall:.3f}  (grade {trust.grade})")
 print("  breakdown:")
 for dim, score in trust.breakdown.items():
+    if score is None:
+        # None = unknown: the evidence source did not carry this dimension
+        # (e.g. attribution grading on a pre-v0.5 record).
+        print(f"    {dim:<28}  —    (unknown)")
+        continue
     bar = "█" * int(score * 20)
     print(f"    {dim:<28} {score:.2f}  {bar}")
 
