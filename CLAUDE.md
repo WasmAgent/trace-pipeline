@@ -41,7 +41,7 @@ wasmagent-trace validate-aep ...   # alias for evomerge
 | Module | Location |
 |---|---|
 | `compute_admission_score` / `admission_gate` | `evomerge/validate/quality_gate.py` — 6-dimension Evidence Admission Score |
-| `validate_aep_record` / `validate_aep_file` | `evomerge/validate/aep.py` — AEP v0.1/v0.2 schema validation |
+| `validate_aep_record` / `validate_aep_file` | `evomerge/validate/aep.py` — AEP schema validation (canonical schema loaded from the `wasmagent-protocol` package) |
 | `generate_audit_report` / `_standards_section` | `evomerge/audit_report.py` — OWASP/OTel standards coverage matrix |
 | `audit_verifier_results` / `audit_aep_verifiers` | `evomerge/eval/verifier_audit.py` — verifier strength audit |
 | `compute_calibrated_trust_score` | `evomerge/trust_score.py` — 3-dimension calibrated score (evidence_health / policy_risk / training_eligibility) |
@@ -53,10 +53,13 @@ wasmagent-trace validate-aep ...   # alias for evomerge
 
 ## AEP schema version
 
-Current schema: `aep-record/v0.2` — supports v0.1 and v0.2 records (backwards compatible).
-Schema file: `schemas/aep-record.schema.json`
-
-v0.2 adds: `parent_action_id`, `causal_chain_id`, `scope_lease_id`, `input_taint_labels`, `memory_read_refs`, `pre_state_digest`, `run_context`, `signature.bundle`.
+The AEP record schema is consumed from the installed `wasmagent-protocol`
+package — `get_schema("aep-record")` in `evomerge/validate/aep.py`. No local
+copy is kept. The former `schemas/aep-record.schema.json` froze at
+`aep-record/v0.2` while canonical moved on (v0.3 optional fields, v0.4 DSSE
+envelope) and was removed rather than refreshed; schema evolution is tracked
+upstream in `WasmAgent/wasmagent-protocol`. Bump the package dependency to
+pick up new schema versions.
 
 ## Recipes (runnable examples)
 
