@@ -287,6 +287,35 @@ class AgentTrustScoreBuilder:
                 self._dims["budget_compliance"] = max(0.0, 1.0 - violations / checks)
             # If budget_ledger present but no tracked sub-budgets, leave unset (no entry).
 
+        # attribution_integrity (aep/v0.5, canonical wasmagent-protocol 0.1.9):
+        # how verifiably the human authorization is backed. A record that
+        # merely names a principal is not evidence that the principal
+        # consented — grading makes that distinction machine-checkable.
+        #   qualified_signature + principal-key-backed + subject-consented → 1.0
+        #   'unknown' axes score negatively; absent grading → None (unknown).
+        attr_origin = record.get("authority_origin")
+        attr_backing = record.get("attribution_backing")
+        if attr_origin is None and attr_backing is None:
+            self._dims["attribution_integrity"] = None
+            self._notes.append(
+                "attribution_integrity: no aep/v0.5 attribution grading — dimension unknown"
+            )
+        else:
+            score = 0.5
+            if attr_backing == "qualified_signature":
+                score += 0.25
+            elif attr_backing == "principal_key_signed":
+                score += 0.15
+            elif attr_backing == "unknown":
+                score -= 0.25
+            if attr_origin == "subject_consented":
+                score += 0.25
+            elif attr_origin in ("administrator_assigned", "organization_wide"):
+                score += 0.1
+            elif attr_origin == "unknown":
+                score -= 0.25
+            self._dims["attribution_integrity"] = max(0.0, min(1.0, score))
+
         return self
 
     def add_task_success(self, passed: bool) -> AgentTrustScoreBuilder:

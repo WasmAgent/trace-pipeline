@@ -52,6 +52,10 @@ class AEPValidationResult:
     has_recording_mode: bool = False
     has_side_effect_class: bool = False
     v0_3_fields_count: int = 0
+    # v0.5 attribution grading (canonical wasmagent-protocol 0.1.9):
+    # machine-checkable statement of what backs the human attribution.
+    attribution: dict[str, Any] | None = None
+    v0_5_fields_count: int = 0
 
     @property
     def evidence_completeness(self) -> float:
@@ -171,6 +175,21 @@ def validate_aep_record(
     ]
     v0_3_count = sum(1 for f in _V0_3_FIELDS if f in record)
 
+    # aep/v0.5 attribution grading: who the run acted for, who authorized it,
+    # and how verifiably that authorization is backed. Absent = the producer
+    # makes no claim (distinct from 'unknown' = observed but ungradeable).
+    _V0_5_FIELDS = [
+        "authorized_by", "authority_origin", "identity_source",
+        "attribution_backing", "run_attribution_backing_floor",
+        "run_attribution_backing_observed",
+    ]
+    v0_5_fields = {f: record[f] for f in _V0_5_FIELDS if f in record}
+    v0_5_count = len(v0_5_fields)
+    attribution: dict[str, Any] | None = None
+    if v0_5_count > 0:
+        attribution = {"user_id": record["user_id"]} if "user_id" in record else {}
+        attribution.update(v0_5_fields)
+
     return AEPValidationResult(
         run_id=run_id,
         valid_schema=valid_schema,
@@ -186,6 +205,8 @@ def validate_aep_record(
         has_recording_mode="recording_mode" in record,
         has_side_effect_class="side_effect_class" in record,
         v0_3_fields_count=v0_3_count,
+        attribution=attribution,
+        v0_5_fields_count=v0_5_count,
     )
 
 

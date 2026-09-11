@@ -32,6 +32,7 @@ def _aep_section(aep_files: list) -> str:
 
     total_pass = total_fail = 0
     rows = []
+    attribution_rows = []
     for fpath in aep_files:
         p = Path(fpath)
         if not p.exists():
@@ -45,9 +46,48 @@ def _aep_section(aep_files: list) -> str:
         avg_ec = (sum(r.evidence_completeness for r in results) / total) if total else 0.0
         rows.append(f"| {fpath} | {passed}/{total} pass | {avg_ec:.0%} |")
 
+        # aep/v0.5 attribution grading summary (canonical wasmagent-protocol 0.1.9)
+        import json
+        try:
+            with open(p) as f:
+                records = [json.loads(line) for line in f if line.strip()]
+        except Exception:
+            records = []
+        for rec in records:
+            origin = rec.get("authority_origin")
+            backing = rec.get("attribution_backing")
+            if origin is None and backing is None:
+                continue
+            strong = (
+                backing in ("principal_key_signed", "qualified_signature")
+                and origin == "subject_consented"
+            )
+            attribution_rows.append((
+                rec.get("run_id", "?"),
+                rec.get("user_id", "—"),
+                rec.get("authorized_by", "—"),
+                origin or "—",
+                backing or "—",
+                rec.get("run_attribution_backing_floor", "—"),
+                "strong" if strong else "weak",
+            ))
+
     lines.append(f"\n**Overall: {total_pass} pass / {total_fail} fail**\n")
     lines.append("\n| File | Pass rate | Evidence completeness |\n|---|---|---|")
     lines.extend(rows)
+
+    if attribution_rows:
+        lines.append(
+            "\n### Attribution grading (aep/v0.5)\n\n"
+            "What backs the human authorization each record claims. A record that "
+            "merely names a principal is not evidence that the principal consented.\n"
+        )
+        lines.append(
+            "\n| Run | Acts for | Authorized by | Authority origin | Backing | Floor | Assessment |\n"
+            "|---|---|---|---|---|---|---|"
+        )
+        for rid, user, by, origin, backing, floor, verdict in attribution_rows:
+            lines.append(f"| {rid} | {user} | {by} | {origin} | {backing} | {floor} | {verdict} |")
     return "\n".join(lines) + "\n"
 
 
@@ -110,6 +150,7 @@ def _standards_section(aep_files: list) -> str:
         ("OWASP-MCP-03", "Rug Pull", "tool_manifest_digest"),
         ("OWASP-MCP-05", "Taint Passthrough", "input_refs[*].taint_labels"),
         ("OWASP-MCP-07", "Supply Chain", "repo_commit"),
+        ("OWASP-MCP-08", "Attribution Grading (aep/v0.5)", "authority_origin"),
         ("OTel-GenAI", "Observability Export", "trace_id"),
         ("AEP-Provenance", "Action Provenance", "actions[*].result_digest"),
     ]
@@ -135,6 +176,8 @@ def _standards_section(aep_files: list) -> str:
         for rec in records:
             if rec.get("tool_manifest_digest"):
                 field_presence["tool_manifest_digest"] = field_presence.get("tool_manifest_digest", 0) + 1
+            if rec.get("authority_origin"):
+                field_presence["authority_origin"] = field_presence.get("authority_origin", 0) + 1
             if rec.get("capability_decisions"):
                 field_presence["capability_decisions"] = field_presence.get("capability_decisions", 0) + 1
             if rec.get("repo_commit"):
