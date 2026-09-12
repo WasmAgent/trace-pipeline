@@ -33,7 +33,7 @@ dependencies = [
     # run_attribution_backing_floor, run_attribution_backing_observed,
     # authorized_by) consumed by evomerge/validate/aep.py via
     # get_schema("aep-record").
-    "wasmagent-protocol>=0.1.9",
+    "wasmagent-protocol>=0.1.10",
 ]
 
 [project.optional-dependencies]
