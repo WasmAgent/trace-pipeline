@@ -141,7 +141,11 @@ def validate_aep_record(
     run_id = record.get("run_id", "<unknown>")
     errors: list[str] = []
 
-    # Schema validation (jsonschema is a hard dependency — no fallback)
+    # Schema validation (jsonschema is a hard dependency — no fallback).
+    # Catches every exception, not just ValidationError: hostile inputs can
+    # crash the validator itself (RecursionError on deeply nested structures,
+    # TypeError on wrong-typed containers) — a crash here turns one bad line
+    # into a whole-pipeline outage, which is exactly what an attacker wants.
     valid_schema = True
     try:
         schema = _load_schema()
@@ -149,6 +153,44 @@ def validate_aep_record(
     except jsonschema.ValidationError as e:
         valid_schema = False
         errors.append(f"schema: {e.message}")
+    except Exception as e:  # noqa: BLE001 - validation must survive hostile input
+        valid_schema = False
+        errors.append(f"schema: internal validation failure ({type(e).__name__})")
+
+    # Hostile-key rejection: a literal "__proto__" key is inert in Python but
+    # is a prototype-pollution vector for JS consumers of the same record.
+    if isinstance(record, dict) and "__proto__" in record:
+        valid_schema = False
+        errors.append("schema: record contains forbidden key '__proto__'")
+
+    # aep/v0.5 floor consistency: the floor MUST be the weakest grade in
+    # `run_attribution_backing_observed` — a floor that omits or exceeds an
+    # observed grade masks weak authorizations inside a strong-looking one
+    # (the exact masking the floor exists to prevent).
+    _BACKING_ORDER = [
+        "unknown",
+        "operator_asserted",
+        "principal_key_signed",
+        "qualified_signature",
+    ]
+    floor = record.get("run_attribution_backing_floor")
+    observed = record.get("run_attribution_backing_observed")
+    if floor is not None and isinstance(observed, list) and observed:
+        known = all(g in _BACKING_ORDER for g in observed) and floor in _BACKING_ORDER
+        if not known:
+            errors.append(
+                "attribution: backing grade outside the canonical vocabulary"
+            )
+        elif floor not in observed:
+            errors.append(
+                "attribution: run_attribution_backing_floor is not present in "
+                "run_attribution_backing_observed"
+            )
+        elif observed.index(floor) != min(observed.index(g) for g in observed):
+            errors.append(
+                "attribution: run_attribution_backing_floor is not the weakest "
+                "grade in run_attribution_backing_observed"
+            )
 
     # Signature verification
     if require_signature:
@@ -232,6 +274,21 @@ def validate_aep_file(
                     state_changing_actions_with_evidence=0,
                     state_changing_actions_total=0,
                     errors=[f"JSON parse error: {e}"],
+                ))
+                continue
+            except RecursionError:
+                # A hostile line can nest deeply enough to blow the parser's
+                # stack — treat it as one invalid record instead of crashing
+                # the whole validation run.
+                results.append(AEPValidationResult(
+                    run_id=f"line-{i}",
+                    valid_schema=False,
+                    has_model_id=False,
+                    has_actions=False,
+                    has_verifier_results=False,
+                    state_changing_actions_with_evidence=0,
+                    state_changing_actions_total=0,
+                    errors=["JSON parse error: nesting too deep (RecursionError)"],
                 ))
                 continue
             results.append(validate_aep_record(record, require_signature=require_signature))
