@@ -10,11 +10,41 @@ Tests:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import sys
 from typing import Any
 
 import pytest
+
+
+def _dsse_sign_record(record: dict[str, Any], private_key, key_id: str) -> dict[str, Any]:
+    """Build a DSSE envelope over the record (current/only signing profile)."""
+    unsigned = {
+        k: v for k, v in record.items()
+        if k not in ("signature", "dsse_envelope", "timestamp_proof")
+    }
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    digest = hashlib.sha256(canonical).hexdigest()
+    statement = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{"name": f"urn:wasmagent:run:{record['run_id']}", "digest": {"sha256": digest}}],
+        "predicateType": "https://wasmagent.dev/attestations/aep/v0.4",
+        "predicate": unsigned,
+    }
+    payload_b64 = base64.b64encode(json.dumps(statement).encode()).decode()
+    payload_type = "application/vnd.in-toto+json"
+    pt = payload_type.encode()
+    pb = payload_b64.encode()
+    pae = b"DSSEv1 " + str(len(pt)).encode() + b" " + pt + b" " + str(len(pb)).encode() + b" " + pb
+    sig_bytes = private_key.sign(pae)
+    signed = dict(record)
+    signed["dsse_envelope"] = {
+        "payloadType": payload_type,
+        "payload": payload_b64,
+        "signatures": [{"keyid": key_id, "sig": base64.urlsafe_b64encode(sig_bytes).decode()}],
+    }
+    return signed
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal valid AEP records
@@ -90,23 +120,25 @@ class TestAEPSignatureVerification:
         return private_key, public_key, pub_b64
 
     def test_missing_signature_fails(self):
-        """When require_signature=True and record has no signature block → fail."""
+        """When require_signature=True and record has no signature/envelope → unsigned."""
         from evomerge.validate.aep import validate_aep_record
         record = _minimal_record()
         result = validate_aep_record(record, require_signature=True)
         assert not result.passed
-        assert any("signature" in e for e in result.errors)
+        assert result.authenticity_mode == "unsigned"
 
     def test_valid_signature_passes(self, monkeypatch, ed25519_keypair):
-        """A correctly signed record with the public key in env → pass."""
+        """A correctly DSSE-signed record with the public key in env → pass."""
         from evomerge.validate.aep import validate_aep_record
         private_key, public_key, pub_b64 = ed25519_keypair
         key_id = "test-key-v1"
         env_var = "WASMAGENT_AEP_PUBKEY_TEST_KEY_V1"
-        record = _sign_record(_minimal_record(), private_key, key_id)
+        record = _dsse_sign_record(_minimal_record(), private_key, key_id)
         monkeypatch.setenv(env_var, pub_b64)
         result = validate_aep_record(record, require_signature=True)
         assert result.passed, f"Expected pass but got errors: {result.errors}"
+        assert result.authenticity_mode == "dsse-valid"
+        assert result.authenticity_valid is True
 
     def test_tampered_payload_fails(self, monkeypatch, ed25519_keypair):
         """Signing a record then modifying the payload must fail verification."""
@@ -114,25 +146,25 @@ class TestAEPSignatureVerification:
         private_key, public_key, pub_b64 = ed25519_keypair
         key_id = "test-key-v1"
         env_var = "WASMAGENT_AEP_PUBKEY_TEST_KEY_V1"
-        record = _sign_record(_minimal_record(), private_key, key_id)
+        record = _dsse_sign_record(_minimal_record(), private_key, key_id)
         # Tamper: change run_id after signing
         record["run_id"] = "TAMPERED-run-id"
         monkeypatch.setenv(env_var, pub_b64)
         result = validate_aep_record(record, require_signature=True)
         assert not result.passed
-        assert any("signature" in e for e in result.errors)
+        assert any("authenticity" in e for e in result.errors)
 
     def test_unknown_key_id_fails(self, monkeypatch, ed25519_keypair):
         """A key_id with no matching env var must fail."""
         from evomerge.validate.aep import validate_aep_record
         private_key, _, _ = ed25519_keypair
         key_id = "nonexistent-key-v99"
-        record = _sign_record(_minimal_record(), private_key, key_id)
+        record = _dsse_sign_record(_minimal_record(), private_key, key_id)
         # Do NOT set the env var
         monkeypatch.delenv("WASMAGENT_AEP_PUBKEY_NONEXISTENT_KEY_V99", raising=False)
         result = validate_aep_record(record, require_signature=True)
         assert not result.passed
-        assert any("signature" in e for e in result.errors)
+        assert any("authenticity" in e for e in result.errors)
 
     def test_no_signature_required_no_check(self):
         """When require_signature=False (default), missing signature is not an error."""

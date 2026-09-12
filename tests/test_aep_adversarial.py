@@ -36,9 +36,13 @@ class TestHostileStructures:
         assert any("nesting too deep" in e or "internal validation failure" in e for e in results[0].errors)
 
     def test_proto_key_is_rejected(self) -> None:
+        # __proto__ is protocol-valid (canonical keeps the field open) but is
+        # rejected as LOCAL admission policy — the layers are distinct.
         record = _base(__proto__={"admin": True})
         result = validate_aep_record(record)
-        assert result.valid_schema is False
+        assert result.valid_schema is True
+        assert result.security_policy_valid is False
+        assert result.passed is False
         assert any("__proto__" in e for e in result.errors)
 
 

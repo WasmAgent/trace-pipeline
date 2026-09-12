@@ -30,6 +30,20 @@ from wasmagent_protocol import get_schema
 
 from evomerge.validate.keystore import KeyNotFoundError, load_public_key
 
+_AEP_PAYLOAD_TYPE = "application/vnd.in-toto+json"
+_AEP_PREDICATE_TYPE = "https://wasmagent.dev/attestations/aep/v0.4"
+_STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
+
+
+@dataclass
+class AuthenticityResult:
+    """Layered authenticity verdict (DSSE is the only supported profile)."""
+
+    valid: bool
+    mode: str  # dsse-valid | unsigned | unsupported-legacy | invalid | not-checked
+    binding: str = "not-applicable"  # exact | invalid | not-applicable
+    detail: str = ""
+
 
 def _load_schema() -> dict:
     return get_schema("aep-record")
@@ -56,6 +70,14 @@ class AEPValidationResult:
     # machine-checkable statement of what backs the human attribution.
     attribution: dict[str, Any] | None = None
     v0_5_fields_count: int = 0
+    # Layered verdicts (wasmagent-protocol#214): protocol validity, derived
+    # semantics, local admission policy, and authenticity are distinct —
+    # a boolean "valid" must never erase an assurance state.
+    protocol_schema_valid: bool | None = None
+    semantic_valid: bool | None = None
+    security_policy_valid: bool | None = None
+    authenticity_mode: str | None = None
+    authenticity_valid: bool | None = None
 
     @property
     def evidence_completeness(self) -> float:
@@ -68,70 +90,91 @@ class AEPValidationResult:
         return self.valid_schema and len(self.errors) == 0
 
 
-def _verify_signature(record: dict[str, Any]) -> list[str]:
-    """Verify the Ed25519 signature block in a record.
+def _pae(payload_type: str, payload_b64: str) -> bytes:
+    pt = payload_type.encode()
+    pb = payload_b64.encode()
+    return b"DSSEv1 " + str(len(pt)).encode() + b" " + pt + b" " + str(len(pb)).encode() + b" " + pb
 
-    Expected structure (W1 contract):
-        record["signature"] = {
-            "alg": "ed25519",
-            "key_id": "<string>",
-            "sig": "<base64-encoded 64-byte signature>",
-        }
 
-    The signed payload is the canonical JSON of the record with the
-    "signature" field removed, serialized with sorted keys, no spaces.
+def verify_aep_authenticity(record: dict[str, Any]) -> AuthenticityResult:
+    """DSSE-only authenticity dispatcher.
 
-    Returns a list of error strings (empty means verification passed).
+    The retired inline-signature construction (Ed25519 over canonical JSON)
+    is unsupported: records carrying a signature block without a
+    dsse_envelope report mode='unsupported-legacy', never 'valid'.
     """
-    errors: list[str] = []
-    sig_block = record.get("signature")
-    if sig_block is None:
-        errors.append("signature: missing 'signature' field in record")
-        return errors
+    envelope = record.get("dsse_envelope")
+    if not isinstance(envelope, dict):
+        if record.get("signature") is not None:
+            return AuthenticityResult(
+                valid=False,
+                mode="unsupported-legacy",
+                detail="legacy inline signature construction is retired (DSSE only)",
+            )
+        return AuthenticityResult(valid=False, mode="unsigned")
 
-    alg = sig_block.get("alg")
-    key_id = sig_block.get("key_id")
-    sig_b64 = sig_block.get("sig")
+    sigs = envelope.get("signatures")
+    if not isinstance(sigs, list) or len(sigs) != 1:
+        return AuthenticityResult(
+            valid=False,
+            mode="invalid",
+            detail=f"envelope must carry exactly one signature, got {len(sigs) if isinstance(sigs, list) else 'non-list'}",
+        )
+    sig_entry = sigs[0] or {}
+    key_id = sig_entry.get("keyid") or sig_entry.get("key_id")
+    sig_b64 = sig_entry.get("sig")
+    payload_type = envelope.get("payloadType")
+    payload_b64 = envelope.get("payload")
+    if payload_type != _AEP_PAYLOAD_TYPE:
+        return AuthenticityResult(False, "invalid", "not-applicable", "payload type mismatch")
+    if not key_id or not sig_b64 or not isinstance(payload_b64, str):
+        return AuthenticityResult(False, "invalid", "not-applicable", "malformed envelope")
 
-    if alg != "ed25519":
-        errors.append(f"signature: unsupported algorithm {alg!r}, expected 'ed25519'")
-        return errors
-    if not key_id:
-        errors.append("signature: missing 'key_id' in signature block")
-        return errors
-    if not sig_b64:
-        errors.append("signature: missing 'sig' in signature block")
-        return errors
-
-    # Load public key from keystore (env var)
     try:
         pubkey: Ed25519PublicKey = load_public_key(key_id)
     except KeyNotFoundError as exc:
-        errors.append(f"signature: {exc}")
-        return errors
+        return AuthenticityResult(False, "invalid", "not-applicable", f"keystore: {exc}")
     except ValueError as exc:
-        errors.append(f"signature: key load error — {exc}")
-        return errors
+        return AuthenticityResult(False, "invalid", "not-applicable", f"key load error: {exc}")
 
-    # Decode the signature bytes
     try:
-        # Accept both standard and URL-safe base64
         padding = (4 - len(sig_b64) % 4) % 4
         sig_bytes = base64.urlsafe_b64decode(sig_b64 + "=" * padding)
-    except Exception as exc:
-        errors.append(f"signature: cannot base64-decode 'sig': {exc}")
-        return errors
-
-    # Reconstruct signed payload: record minus the "signature" field, sorted keys
-    payload_dict = {k: v for k, v in record.items() if k != "signature"}
-    payload_bytes = json.dumps(payload_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    except Exception as exc:  # noqa: BLE001
+        return AuthenticityResult(False, "invalid", "not-applicable", f"sig decode: {exc}")
 
     try:
-        pubkey.verify(sig_bytes, payload_bytes)
+        pubkey.verify(sig_bytes, _pae(payload_type, payload_b64))
     except InvalidSignature:
-        errors.append("signature: Ed25519 signature verification failed")
+        return AuthenticityResult(False, "invalid", "not-applicable", "PAE signature verification failed")
 
-    return errors
+    try:
+        statement = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return AuthenticityResult(False, "invalid", "not-applicable", f"payload not JSON: {exc}")
+    if statement.get("predicateType") != _AEP_PREDICATE_TYPE:
+        return AuthenticityResult(False, "invalid", "invalid", "predicateType mismatch")
+    if statement.get("_type") != _STATEMENT_TYPE:
+        return AuthenticityResult(False, "invalid", "invalid", "statement _type mismatch")
+
+    run_id = record.get("run_id")
+    subjects = statement.get("subject")
+    if not isinstance(subjects, list) or len(subjects) != 1:
+        return AuthenticityResult(False, "invalid", "invalid", "statement must carry exactly one subject")
+    subject = subjects[0] or {}
+    subject_name = subject.get("name")
+    if subject_name != f"urn:wasmagent:run:{run_id}":
+        return AuthenticityResult(False, "invalid", "invalid", "subject name does not match run_id")
+
+    unsigned = {k: v for k, v in record.items() if k not in ("signature", "dsse_envelope", "timestamp_proof")}
+    subject_digest = (subject.get("digest") or {}).get("sha256")
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    if subject_digest != __import__("hashlib").sha256(canonical).hexdigest():
+        return AuthenticityResult(False, "invalid", "invalid", "subject digest does not bind the record")
+    if statement.get("predicate") != unsigned:
+        return AuthenticityResult(False, "invalid", "invalid", "predicate does not match the record")
+
+    return AuthenticityResult(valid=True, mode="dsse-valid", binding="exact")
 
 
 def validate_aep_record(
@@ -157,11 +200,15 @@ def validate_aep_record(
         valid_schema = False
         errors.append(f"schema: internal validation failure ({type(e).__name__})")
 
-    # Hostile-key rejection: a literal "__proto__" key is inert in Python but
-    # is a prototype-pollution vector for JS consumers of the same record.
+    # Hostile-key admission policy: a literal "__proto__" key is inert in
+    # Python but is a prototype-pollution vector for JS consumers of the
+    # same record. This is a LOCAL ADMISSION decision — the canonical schema
+    # deliberately keeps the field open — so it must not be reported as a
+    # protocol schema violation.
+    security_policy_valid = True
     if isinstance(record, dict) and "__proto__" in record:
-        valid_schema = False
-        errors.append("schema: record contains forbidden key '__proto__'")
+        security_policy_valid = False
+        errors.append("policy: record contains forbidden key '__proto__' (JS prototype-pollution vector)")
 
     # aep/v0.5 floor consistency: the floor MUST be the weakest grade in
     # `run_attribution_backing_observed` — a floor that omits or exceeds an
@@ -195,11 +242,15 @@ def validate_aep_record(
                 "grade in run_attribution_backing_observed"
             )
 
-    # Signature verification
+    # Authenticity verification — DSSE-only dispatcher (no legacy fallback).
+    authenticity_mode: str | None = None
+    authenticity_valid: bool | None = None
     if require_signature:
-        sig_errors = _verify_signature(record)
-        if sig_errors:
-            errors.extend(sig_errors)
+        ar = verify_aep_authenticity(record)
+        authenticity_mode = ar.mode
+        authenticity_valid = ar.valid
+        if not ar.valid:
+            errors.append(f"authenticity: {ar.mode} — {ar.detail}")
 
     actions = record.get("actions", [])
     sc_actions = [a for a in actions if a.get("state_changing")]
@@ -238,6 +289,11 @@ def validate_aep_record(
     return AEPValidationResult(
         run_id=run_id,
         valid_schema=valid_schema,
+        protocol_schema_valid=valid_schema,
+        semantic_valid=not any(e.startswith("attribution:") for e in errors),
+        security_policy_valid=security_policy_valid,
+        authenticity_mode=authenticity_mode,
+        authenticity_valid=authenticity_valid,
         has_model_id=bool(record.get("model_id")),
         has_actions=len(actions) > 0,
         has_verifier_results=len(record.get("verifier_results", [])) > 0,
