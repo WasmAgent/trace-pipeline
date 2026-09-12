@@ -98,6 +98,60 @@ class TestAttributionFloorConsistency:
         assert not any("weakest" in e or "not present" in e for e in result.errors)
 
 
+class TestFloorPermutationInvariance:
+    """`run_attribution_backing_observed` is set-semantics: ranking must use
+    the canonical grade order, never array positions. Regression tests for
+    the order-dependent floor check (weakest-grade detection used to depend
+    on where grades happened to sit in the array)."""
+
+    def _validate_floor(self, observed: list[str], floor: str):
+        return validate_aep_record(
+            _base(run_attribution_backing_observed=observed, run_attribution_backing_floor=floor)
+        )
+
+    def test_honest_floor_passes_regardless_of_array_order(self) -> None:
+        # The case the old index-based check got wrong: a strong grade sitting
+        # first in the array made an honest weakest floor read as "not weakest".
+        first = self._validate_floor(["qualified_signature", "operator_asserted"], "operator_asserted")
+        assert first.passed
+        assert not any("weakest" in e for e in first.errors)
+        second = self._validate_floor(["operator_asserted", "qualified_signature"], "operator_asserted")
+        assert second.passed
+
+    def test_unknown_floor_with_mixed_grades_passes(self) -> None:
+        result = self._validate_floor(
+            ["principal_key_signed", "unknown", "qualified_signature"], "unknown"
+        )
+        assert result.passed
+        assert not any("weakest" in e for e in result.errors)
+
+    def test_all_permutations_of_same_set_get_identical_results(self) -> None:
+        from itertools import permutations
+
+        observed = ["qualified_signature", "operator_asserted", "principal_key_signed"]
+        outcomes = {
+            self._validate_floor(list(p), "operator_asserted").passed for p in permutations(observed)
+        }
+        assert outcomes == {True}, "honest floor must pass under every permutation"
+
+        roundup = {
+            self._validate_floor(list(p), "qualified_signature").passed for p in permutations(observed)
+        }
+        assert roundup == {False}, "rounded-up floor must fail under every permutation"
+
+    def test_roundup_floor_is_rejected_in_every_position(self) -> None:
+        for observed in (
+            ["qualified_signature", "operator_asserted"],
+            ["operator_asserted", "qualified_signature"],
+        ):
+            result = self._validate_floor(observed, "qualified_signature")
+            assert result.passed is False or any("weakest" in e for e in result.errors)
+
+    def test_floor_outside_observed_is_rejected(self) -> None:
+        result = self._validate_floor(["operator_asserted", "principal_key_signed"], "unknown")
+        assert any("not present" in e for e in result.errors)
+
+
 class TestJsonlRobustness:
     def test_unparseable_lines_are_classified_not_fatal(self, tmp_path: Path) -> None:
         p = tmp_path / "mixed.jsonl"

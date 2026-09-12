@@ -167,16 +167,19 @@ def validate_aep_record(
     # `run_attribution_backing_observed` — a floor that omits or exceeds an
     # observed grade masks weak authorizations inside a strong-looking one
     # (the exact masking the floor exists to prevent).
+    # `_BACKING_ORDER` is the canonical rank (weakest first); the observed
+    # list is set-semantics, so ranking must never use array positions.
     _BACKING_ORDER = [
         "unknown",
         "operator_asserted",
         "principal_key_signed",
         "qualified_signature",
     ]
+    _BACKING_RANK = {grade: i for i, grade in enumerate(_BACKING_ORDER)}
     floor = record.get("run_attribution_backing_floor")
     observed = record.get("run_attribution_backing_observed")
     if floor is not None and isinstance(observed, list) and observed:
-        known = all(g in _BACKING_ORDER for g in observed) and floor in _BACKING_ORDER
+        known = all(g in _BACKING_RANK for g in observed) and floor in _BACKING_RANK
         if not known:
             errors.append(
                 "attribution: backing grade outside the canonical vocabulary"
@@ -186,7 +189,7 @@ def validate_aep_record(
                 "attribution: run_attribution_backing_floor is not present in "
                 "run_attribution_backing_observed"
             )
-        elif observed.index(floor) != min(observed.index(g) for g in observed):
+        elif _BACKING_RANK[floor] != min(_BACKING_RANK[g] for g in observed):
             errors.append(
                 "attribution: run_attribution_backing_floor is not the weakest "
                 "grade in run_attribution_backing_observed"
