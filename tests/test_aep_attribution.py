@@ -60,6 +60,45 @@ class TestAttributionExtraction:
         assert result.attribution["authority_origin"] == "unknown"
 
 
+class TestV05WithDsseEnvelope:
+    def test_v0_5_record_with_dsse_envelope_validates_and_extracts_grading(self) -> None:
+        # The strongest evidence shape: DSSE-attested record that also carries
+        # the attribution-grading vocabulary (gateway/runtime emission).
+        import base64
+        import json
+
+        record = _base_record(
+            actions=[
+                {
+                    "action_id": "action-0",
+                    "tool_name": "POST /mcp",
+                    "state_changing": True,
+                    "timestamp_ms": 1_757_460_000_000,
+                    "side_effect_class": "network-egress",
+                }
+            ],
+            **_strong_attribution(),
+        )
+        statement = {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://wasmagent.dev/attestations/aep/v0.4",
+            "subject": [{"name": f"urn:wasmagent:run:{record['run_id']}", "digest": {"sha256": "x" * 64}}],
+            "predicate": record,
+        }
+        payload = base64.b64encode(json.dumps(statement).encode()).decode()
+        record["dsse_envelope"] = {
+            "payloadType": "application/vnd.in-toto+json",
+            "payload": payload,
+            "signatures": [{"keyid": "k1", "sig": "c2ln"}],
+        }
+
+        result = validate_aep_record(record)
+        assert result.valid_schema
+        assert result.attribution is not None
+        assert result.attribution["attribution_backing"] == "qualified_signature"
+        assert result.v0_5_fields_count == 6
+
+
 class TestAttributionTrustDimension:
     def test_strong_grading_scores_high(self) -> None:
         record = _base_record(**_strong_attribution())
