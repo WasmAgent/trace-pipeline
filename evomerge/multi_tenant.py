@@ -34,6 +34,7 @@ __all__ = [
     "TenantConfig",
     "QuotaPolicy",
     "QuotaExceededError",
+    "QuotaCharge",
     "TenantClaimMismatchError",
     "TenantContext",
     "QuotaEnforcer",
@@ -159,6 +160,21 @@ class _DailyUsage:
     records: int = 0
 
 
+@dataclass(frozen=True)
+class QuotaCharge:
+    """Exact quota consumption of one admitted batch segment.
+
+    Returned by :meth:`QuotaEnforcer.check_and_record` and replayed verbatim by
+    :meth:`QuotaEnforcer.refund` — rollback never recomputes, it reverses
+    precisely what was charged (records, storage bytes, and subject
+    references)."""
+
+    tenant_id: TenantID
+    n_records: int
+    n_bytes: int
+    subjects: frozenset[str]
+
+
 class QuotaEnforcer:
     """Tracks and enforces per-tenant quotas.
 
@@ -171,8 +187,11 @@ class QuotaEnforcer:
         self._daily: dict[TenantID, _DailyUsage] = {}
         # tenant_id → total bytes written (session total, non-persistent)
         self._bytes: dict[TenantID, int] = {}
-        # tenant_id → set of seen subject_ids
-        self._subjects: dict[TenantID, set[str]] = {}
+        # tenant_id → subject_id → active reference count. Refcounts (not a
+        # bare set) make rollback transactional: a failed batch decrements
+        # only ITS references and can never erase a concurrent transaction's
+        # committed subject.
+        self._subjects: dict[TenantID, dict[str, int]] = {}
         self._lock = threading.Lock()
 
     def _today_utc(self) -> str:
@@ -186,11 +205,14 @@ class QuotaEnforcer:
         n_records: int,
         n_bytes: int = 0,
         subject_ids: list[str] | None = None,
-    ) -> None:
-        """Verify that adding *n_records* / *n_bytes* does not breach *policy*.
+    ) -> QuotaCharge:
+        """Verify that adding *n_records* / *n_bytes* / *subject_ids* does not
+        breach *policy*.
 
         Raises ``QuotaExceededError`` on the first limit hit. On success,
-        counters are updated atomically.
+        counters are updated atomically and the exact
+        :class:`QuotaCharge` consumed is returned — keep it and pass it to
+        :meth:`refund` to roll the whole charge back transactionally.
         """
         with self._lock:
             today = self._today_utc()
@@ -213,18 +235,27 @@ class QuotaEnforcer:
                         tenant_id, "storage_bytes", policy.max_storage_bytes, current_bytes
                     )
 
-            seen = self._subjects.setdefault(tenant_id, set())
-            new_subjects = set(subject_ids or []) - seen
+            refs = self._subjects.setdefault(tenant_id, {})
+            subjects = set(subject_ids or [])
+            new_subjects = {s for s in subjects if refs.get(s, 0) == 0}
             if policy.max_subjects is not None:
-                if len(seen) + len(new_subjects) > policy.max_subjects:
+                if len(refs) + len(new_subjects) > policy.max_subjects:
                     raise QuotaExceededError(
-                        tenant_id, "subjects", policy.max_subjects, len(seen)
+                        tenant_id, "subjects", policy.max_subjects, len(refs)
                     )
 
             # Commit
             usage.records += n_records
             self._bytes[tenant_id] = current_bytes + n_bytes
-            seen.update(new_subjects)
+            for s in subjects:
+                refs[s] = refs.get(s, 0) + 1
+
+            return QuotaCharge(
+                tenant_id=tenant_id,
+                n_records=n_records,
+                n_bytes=n_bytes,
+                subjects=frozenset(subjects),
+            )
 
     def usage(self, tenant_id: TenantID) -> dict[str, Any]:
         """Return a snapshot of current usage for *tenant_id*."""
@@ -235,7 +266,7 @@ class QuotaEnforcer:
                 "tenant_id": tenant_id,
                 "records_today": daily.records if daily and daily.date_str == today else 0,
                 "storage_bytes": self._bytes.get(tenant_id, 0),
-                "n_subjects": len(self._subjects.get(tenant_id, set())),
+                "n_subjects": len(self._subjects.get(tenant_id, {})),
             }
 
     def reset(self, tenant_id: TenantID) -> None:
@@ -245,28 +276,30 @@ class QuotaEnforcer:
             self._bytes.pop(tenant_id, None)
             self._subjects.pop(tenant_id, None)
 
-    def refund(
-        self,
-        tenant_id: TenantID,
-        policy: QuotaPolicy,
-        n_records: int,
-        n_bytes: int = 0,
-    ) -> None:
-        """Roll back a prior :meth:`check_and_record` charge for *tenant_id*.
+    def refund(self, charge: QuotaCharge) -> None:
+        """Roll back a prior :meth:`check_and_record` charge exactly.
 
         Used by batch admission: if a later tenant in the same batch breaches
         its quota, tenants already charged in the batch are refunded so a
-        failed write never permanently consumes quota. Subject sets are
-        deliberately NOT rolled back — "this subject has been seen" remains
-        true once observed (a conservative, auditable choice)."""
+        failed write never permanently consumes quota. Subject refs are
+        DECREMENTED (not discarded): a subject survives if a concurrent
+        transaction still holds a reference, so rollback can never erase
+        another transaction's committed state."""
         with self._lock:
             today = self._today_utc()
-            usage = self._daily.get(tenant_id)
+            usage = self._daily.get(charge.tenant_id)
             if usage is not None and usage.date_str == today:
-                usage.records = max(0, usage.records - n_records)
-            if n_bytes:
-                current = self._bytes.get(tenant_id, 0)
-                self._bytes[tenant_id] = max(0, current - n_bytes)
+                usage.records = max(0, usage.records - charge.n_records)
+            if charge.n_bytes:
+                current = self._bytes.get(charge.tenant_id, 0)
+                self._bytes[charge.tenant_id] = max(0, current - charge.n_bytes)
+            refs = self._subjects.get(charge.tenant_id, {})
+            for subject in charge.subjects:
+                current_refs = refs.get(subject, 0)
+                if current_refs <= 1:
+                    refs.pop(subject, None)
+                else:
+                    refs[subject] = current_refs - 1
 
 
 # ---------------------------------------------------------------------------
@@ -576,9 +609,9 @@ class TenantIsolationManager:
         }
 
         admitted: dict[TenantID, list[dict[str, Any]]] = {}
-        # (tenant_id, quota, n_records, n_bytes) exactly as charged — the
-        # refund replays these numbers verbatim, never recomputes them.
-        charged: list[tuple[TenantID, QuotaPolicy, int, int]] = []
+        # Exact QuotaCharge objects as committed — rollback replays them
+        # verbatim, in reverse order (transaction semantics).
+        charged: list[QuotaCharge] = []
         try:
             for tid, recs in grouped.items():
                 cfg = self.router.config_for(tid)
@@ -589,7 +622,7 @@ class TenantIsolationManager:
                     for r in recs
                 } - {""})
                 try:
-                    self.enforcer.check_and_record(
+                    charge = self.enforcer.check_and_record(
                         tid, quota, n_records=len(recs), subject_ids=subject_ids,
                         n_bytes=n_bytes_by_tenant[tid],
                     )
@@ -609,7 +642,7 @@ class TenantIsolationManager:
                         },
                     ))
                     raise
-                charged.append((tid, quota, len(recs), n_bytes_by_tenant[tid]))
+                charged.append(charge)
                 admitted[tid] = recs
                 self.audit_logger.log(AuditEvent(
                     event_type="ingest",
@@ -624,11 +657,12 @@ class TenantIsolationManager:
                     },
                 ))
         except QuotaExceededError:
-            # All-or-nothing batch admission: refund tenants already charged
-            # in THIS batch — records AND storage bytes — so a failed write
-            # never permanently consumes quota (no phantom byte usage).
-            for tid, quota, n_recs, n_bytes in charged:
-                self.enforcer.refund(tid, quota, n_records=n_recs, n_bytes=n_bytes)
+            # All-or-nothing batch admission: refund every charge made in THIS
+            # batch — records, storage bytes, AND subject references — in
+            # reverse order, so a failed write never permanently consumes
+            # quota (no phantom byte or subject usage).
+            for charge in reversed(charged):
+                self.enforcer.refund(charge)
             raise
 
         return admitted
