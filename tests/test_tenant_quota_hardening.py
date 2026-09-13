@@ -9,6 +9,7 @@ Invariants under test:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -277,7 +278,9 @@ class TestStorageByteQuotaWiring:
         mgr = _manager()
         recs = [_record(blob="y" * 5_000)]
         mgr.ingest(recs, tenant_context=CTX_A)
-        expected = len(json.dumps(recs, ensure_ascii=False, default=str).encode("utf-8"))
+        expected = len(json.dumps(
+            recs, ensure_ascii=False, default=str, separators=(",", ":"), sort_keys=True
+        ).encode("utf-8"))
         usage = mgr.enforcer.usage("tenant-a")
         assert usage["storage_bytes"] == expected
         assert usage["storage_bytes"] > 0
@@ -652,17 +655,23 @@ class RecordingAuditLogger(AuditLogger):
 
 
 class FailingStore:
-    def write(self, admitted):
+    def write_batch(self, tenant_id, payload, *, payload_sha256, n_records):
         raise OSError("storage unavailable")
 
 
 class MemoryStore:
+    """§6 interface: writes the EXACT reserved payload bytes, hash-verified."""
+
     def __init__(self):
-        self.data = None
+        self.stored: dict[str, bytes] = {}
         self.writes = 0
 
-    def write(self, admitted):
-        self.data = admitted
+    def write_batch(self, tenant_id, payload, *, payload_sha256, n_records):
+        import hashlib
+        assert hashlib.sha256(payload).hexdigest() == payload_sha256, (
+            "durable bytes must hash to the reserved payload digest"
+        )
+        self.stored[tenant_id] = bytes(payload)
         self.writes += 1
 
 
@@ -719,11 +728,11 @@ class TestTransactionBoundary:
 
         state = {"charged": 0}
 
-        def flaky(tenant_id, policy, n_records, subject_ids=None, n_bytes=0):
+        def flaky(tenant_id, policy, n_records, subject_ids=None, n_bytes=0, payload_sha256=None):
             if state["charged"] >= 1:
                 raise OSError("disk full")
             state["charged"] += 1
-            return real(tenant_id, policy, n_records=n_records, subject_ids=subject_ids, n_bytes=n_bytes)
+            return real(tenant_id, policy, n_records=n_records, subject_ids=subject_ids, n_bytes=n_bytes, payload_sha256=payload_sha256)
 
         mgr.enforcer.check_and_record = flaky
         with pytest.raises(OSError):
@@ -779,9 +788,11 @@ class TestTransactionBoundary:
         logger = RecordingAuditLogger()
         mgr = _tx_manager(audit_logger=logger)
         store = MemoryStore()
-        admitted = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        result = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        assert result.committed is True
+        assert result.audit_status == "delivered"
         assert store.writes == 1
-        assert "tenant-a" in admitted
+        assert result.batches[0].tenant_id == "tenant-a"
         usage = mgr.enforcer.usage("tenant-a")
         assert usage["records_today"] == 1
         assert mgr.enforcer._active_charge_count() == 0
@@ -792,7 +803,11 @@ class TestTransactionBoundary:
         mgr = _tx_manager()
         reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
         store = MemoryStore()
-        store.write(reservation.admitted)
+        for batch in reservation.batches:
+            store.write_batch(
+                batch.tenant_id, batch.payload,
+                payload_sha256=batch.payload_sha256, n_records=batch.n_records,
+            )
         mgr.commit(reservation)
         for charge in reservation.charges:
             with pytest.raises(RuntimeError):
@@ -814,11 +829,11 @@ class TestTransactionBoundary:
         logger = RecordingAuditLogger()
         mgr = _two_tenant_tx_manager(audit_logger=logger)
         store = MemoryStore()
-        admitted = mgr.ingest_to_store([
+        result = mgr.ingest_to_store([
             _record(subject_id="aaa-1"),
             _record(subject_id="bbb-1"),
         ], store, tenant_context=None)
-        assert set(admitted.keys()) == {"tenant-a", "tenant-b"}
+        assert {b.tenant_id for b in result.batches} == {"tenant-a", "tenant-b"}
         success = [e for e in logger.emitted if e.event_type == "ingest" and e.outcome == "success"]
         assert len(success) == 2
         assert {e.tenant_id for e in success} == {"tenant-a", "tenant-b"}
@@ -857,7 +872,9 @@ class TestStorageQuotaSemantics:
         recs = [_record(subject_id="aaa-1", blob="x" * 1_000)]
         store = MemoryStore()
         mgr.ingest_to_store(recs, store, tenant_context=None)
-        expected = len(json.dumps(recs, ensure_ascii=False, default=str).encode("utf-8"))
+        expected = len(json.dumps(
+            recs, ensure_ascii=False, default=str, separators=(",", ":"), sort_keys=True
+        ).encode("utf-8"))
         assert mgr.enforcer.usage("tenant-a")["storage_bytes"] == expected
 
     def test_sq03_second_write_respects_committed_first_write(self):
@@ -875,3 +892,376 @@ class TestStorageQuotaSemantics:
                 [_record(subject_id="aaa-2", blob="x" * 4_000)], store, tenant_context=None
             )
         assert mgr.enforcer.usage("tenant-a")["storage_bytes"] == committed
+
+
+# ---------------------------------------------------------------------------
+# Reservation integrity (RI01–RI05)
+# ---------------------------------------------------------------------------
+
+
+class TestReservationIntegrity:
+    def _manager(self, audit_logger=None):
+        return _manager(
+            router=TenantRouter([
+                TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aaa-"]),
+            ]),
+            audit_logger=audit_logger or RecordingAuditLogger(),
+            require_trusted_context=False,
+        )
+
+    def test_ri01_source_mutation_after_reserve_cannot_change_stored_bytes(self):
+        mgr = self._manager()
+        store = MemoryStore()
+        source = [_record(subject_id="aaa-1", blob="small")]
+        reservation = mgr.reserve_ingest(source, tenant_context=None)
+
+        # Hostile caller mutates the ORIGINAL records after validation.
+        source[0]["blob"] = "X" * 1_000_000
+        store.write_batch(
+            reservation.batches[0].tenant_id,
+            reservation.batches[0].payload,
+            payload_sha256=reservation.batches[0].payload_sha256,
+            n_records=reservation.batches[0].n_records,
+        )
+        assert hashlib.sha256(store.stored["tenant-a"]).hexdigest() == (
+            reservation.batches[0].payload_sha256
+        )
+        # The stored bytes are the RESERVED canonical bytes, not the mutated
+        # source: decoded payload still reflects the validated content.
+        decoded = json.loads(store.stored["tenant-a"].decode("utf-8"))
+        assert decoded[0]["blob"] == "small"
+
+    def test_ri02_tenant_mapping_cannot_be_altered_after_routing(self):
+        mgr = self._manager()
+        reservation = mgr.reserve_ingest(
+            [_record(subject_id="aaa-1")], tenant_context=None
+        )
+        # Frozen reservation + immutable tuple of frozen batches: injection of
+        # a different tenant is structurally impossible.
+        with pytest.raises((TypeError, AttributeError)):
+            reservation.batches[0].tenant_id = "tenant-b"  # type: ignore[misc]
+        with pytest.raises(AttributeError):  # FrozenInstanceError
+            reservation.batches = ()  # type: ignore[misc]
+        assert reservation.batches[0].tenant_id == "tenant-a"
+
+    def test_ri03_quota_bytes_equal_reserved_payload_bytes(self):
+        mgr = self._manager()
+        reservation = mgr.reserve_ingest(
+            [_record(subject_id="aaa-1", blob="y" * 2_000)], tenant_context=None
+        )
+        batch = reservation.batches[0]
+        charge = reservation.charges[0]
+        assert charge.tenant_id == batch.tenant_id
+        assert charge.n_bytes == batch.n_bytes
+        assert batch.n_bytes == len(batch.payload)
+        assert charge.payload_sha256 == batch.payload_sha256
+
+    def test_ri04_payload_digest_matches_durable_bytes(self):
+        mgr = self._manager()
+        store = MemoryStore()
+        reservation = mgr.reserve_ingest(
+            [_record(subject_id="aaa-1", blob="z" * 500)], tenant_context=None
+        )
+        for batch in reservation.batches:
+            store.write_batch(
+                batch.tenant_id, batch.payload,
+                payload_sha256=batch.payload_sha256, n_records=batch.n_records,
+            )
+        stored = store.stored["tenant-a"]
+        assert hashlib.sha256(stored).hexdigest() == reservation.batches[0].payload_sha256
+
+    def test_ri05_nested_mutation_after_reserve_has_zero_effect(self):
+        mgr = self._manager()
+        store = MemoryStore()
+        source = [_record(subject_id="aaa-1")]
+        source[0]["run_context"] = {"org": "tenant-a", "nested": {"k": [1, 2]}}
+        reservation = mgr.reserve_ingest(source, tenant_context=None)
+        original_sha = reservation.batches[0].payload_sha256
+        original_payload = bytes(reservation.batches[0].payload)
+
+        # Mutate the source deeply AFTER validation.
+        source[0]["run_context"]["nested"]["k"].append(999)
+        source[0]["run_context"]["org"] = "tenant-b"
+        source[0]["metadata"] = {"injected": True}
+
+        store.write_batch(
+            reservation.batches[0].tenant_id,
+            reservation.batches[0].payload,
+            payload_sha256=reservation.batches[0].payload_sha256,
+            n_records=reservation.batches[0].n_records,
+        )
+        assert store.stored["tenant-a"] == original_payload
+        assert original_sha == hashlib.sha256(original_payload).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Atomic reservation settlement (RT01–RT07)
+# ---------------------------------------------------------------------------
+
+
+class TestAtomicReservationSettlement:
+    def _two_tenant_mgr(self):
+        return _manager(
+            router=TenantRouter([
+                TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aaa-"]),
+                TenantConfig(tenant_id="tenant-b", subject_id_prefixes=["bbb-"]),
+            ]),
+            require_trusted_context=False,
+        )
+
+    def _reservation(self, mgr):
+        return mgr.reserve_ingest([
+            _record(subject_id="aaa-1"),
+            _record(subject_id="bbb-1"),
+        ], tenant_context=None)
+
+    def test_rt01_commit_vs_rollback_race_whole_reservation_winner(self):
+        import threading
+
+        mgr = self._two_tenant_mgr()
+        before = {
+            "a": mgr.enforcer.usage("tenant-a"),
+            "b": mgr.enforcer.usage("tenant-b"),
+        }
+        reservation = self._reservation(mgr)
+        outcomes = {"commit": 0, "rollback": 0, "raised": 0}
+        lock = threading.Lock()
+
+        def committer():
+            try:
+                mgr.commit(reservation)
+                with lock:
+                    outcomes["commit"] += 1
+            except RuntimeError:
+                with lock:
+                    outcomes["raised"] += 1
+
+        def rollbacker():
+            try:
+                mgr.rollback(reservation)
+                with lock:
+                    outcomes["rollback"] += 1
+            except RuntimeError:
+                with lock:
+                    outcomes["raised"] += 1
+
+        t1, t2 = threading.Thread(target=committer), threading.Thread(target=rollbacker)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one terminal transition won the race...
+        assert outcomes["raised"] == 1
+        assert outcomes["commit"] + outcomes["rollback"] == 1
+        # ...and the final state is WHOLE: every charge settled identically.
+        if outcomes["commit"] == 1:
+            assert mgr.enforcer.usage("tenant-a")["records_today"] == before["a"]["records_today"] + 1
+            assert mgr.enforcer.usage("tenant-b")["records_today"] == before["b"]["records_today"] + 1
+        else:
+            assert mgr.enforcer.usage("tenant-a") == before["a"]
+            assert mgr.enforcer.usage("tenant-b") == before["b"]
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_rt02_invalid_charge_causes_zero_commit_mutation(self):
+        enforcer = QuotaEnforcer()
+        quota = QuotaPolicy()
+        c1 = enforcer.check_and_record("t", quota, n_records=1, subject_ids=["s1"])
+        forged = QuotaCharge(
+            charge_id=c1.charge_id,
+            tenant_id="t",
+            n_records=999,  # same id, tampered amounts
+            n_bytes=99_999,
+            subjects=frozenset({"s1"}),
+        )
+        with pytest.raises(RuntimeError):
+            enforcer.commit_many((c1, forged))
+        # Zero mutation: c1 is STILL active (no partial commit).
+        assert enforcer.usage("t")["records_today"] == 1
+        assert enforcer._active_charge_count() == 1
+
+    def test_rt03_invalid_charge_causes_zero_rollback_mutation(self):
+        enforcer = QuotaEnforcer()
+        quota = QuotaPolicy()
+        c1 = enforcer.check_and_record("t", quota, n_records=1, n_bytes=100, subject_ids=["s1"])
+        unknown = QuotaCharge(
+            charge_id="never-issued",
+            tenant_id="t",
+            n_records=1,
+            n_bytes=100,
+            subjects=frozenset({"s1"}),
+        )
+        before = enforcer.usage("t")
+        with pytest.raises(RuntimeError):
+            enforcer.refund_many((c1, unknown))
+        assert enforcer.usage("t") == before
+        assert enforcer._active_charge_count() == 1
+
+    def test_rt04_double_commit_rejected(self):
+        mgr = self._two_tenant_mgr()
+        reservation = self._reservation(mgr)
+        mgr.commit(reservation)
+        with pytest.raises(RuntimeError):
+            mgr.commit(reservation)
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_rt05_double_rollback_rejected(self):
+        mgr = self._two_tenant_mgr()
+        reservation = self._reservation(mgr)
+        mgr.rollback(reservation)
+        with pytest.raises(RuntimeError):
+            mgr.rollback(reservation)
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_rt06_committed_reservation_cannot_rollback(self):
+        mgr = self._two_tenant_mgr()
+        reservation = self._reservation(mgr)
+        mgr.commit(reservation)
+        committed_usage = (
+            mgr.enforcer.usage("tenant-a"),
+            mgr.enforcer.usage("tenant-b"),
+        )
+        with pytest.raises(RuntimeError):
+            mgr.rollback(reservation)
+        assert (
+            mgr.enforcer.usage("tenant-a"),
+            mgr.enforcer.usage("tenant-b"),
+        ) == committed_usage
+
+    def test_rt07_rolled_back_reservation_cannot_commit(self):
+        mgr = self._two_tenant_mgr()
+        baseline = (
+            mgr.enforcer.usage("tenant-a"),
+            mgr.enforcer.usage("tenant-b"),
+        )
+        reservation = self._reservation(mgr)
+        mgr.rollback(reservation)
+        with pytest.raises(RuntimeError):
+            mgr.commit(reservation)
+        assert (
+            mgr.enforcer.usage("tenant-a"),
+            mgr.enforcer.usage("tenant-b"),
+        ) == baseline
+
+
+# ---------------------------------------------------------------------------
+# Post-commit audit semantics (PA01–PA04)
+# ---------------------------------------------------------------------------
+
+
+class FlakyAudit(AuditLogger):
+    """AuditLogger whose sink fails on success-event delivery."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_next_ingest_success = False
+
+    def log(self, event: AuditEvent) -> None:
+        if (
+            self.fail_next_ingest_success
+            and event.event_type == "ingest"
+            and event.outcome == "success"
+        ):
+            raise OSError("audit sink down")
+        super().log(event)
+
+
+class TestPostCommitAuditSemantics:
+    def test_pa01_audit_failure_after_durable_commit_reports_committed(self):
+        audit = FlakyAudit()
+        mgr = _manager(audit_logger=audit)
+        store = MemoryStore()
+        audit.fail_next_ingest_success = True
+        result = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        # Durable data present + quota committed; audit failure is REPORTED.
+        assert result.committed is True
+        assert result.audit_status == "failed"
+        assert result.audit_error is not None
+        assert store.writes == 1
+
+    def test_pa02_audit_failure_does_not_trigger_rollback(self):
+        audit = FlakyAudit()
+        mgr = _manager(audit_logger=audit)
+        store = MemoryStore()
+        audit.fail_next_ingest_success = True
+        result = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        usage = mgr.enforcer.usage("tenant-a")
+        assert result.committed is True
+        assert usage["records_today"] == 1
+        assert usage["storage_bytes"] > 0
+        assert "tenant-a" in store.stored
+
+    def test_pa03_caller_can_distinguish_retry_safety(self):
+        mgr = _manager()
+        store = MemoryStore()
+        # Pre-commit storage failure: propagates (retry-safe, nothing durable).
+        with pytest.raises(OSError):
+            mgr.ingest_to_store([_record()], FailingStore(), tenant_context=CTX_A)
+        assert store.writes == 0
+        # Post-commit audit failure: IngestResult with committed=True — NOT
+        # the same undifferentiated exception class.
+        audit = FlakyAudit()
+        mgr2 = _manager(audit_logger=audit)
+        audit.fail_next_ingest_success = True
+        result = mgr2.ingest_to_store([_record()], MemoryStore(), tenant_context=CTX_A)
+        assert result.committed is True
+        assert result.audit_status == "failed"
+
+    def test_pa04_repeated_retry_is_explicitly_preventable(self):
+        audit = FlakyAudit()
+        mgr = _manager(audit_logger=audit)
+        store = MemoryStore()
+        audit.fail_next_ingest_success = True
+        result = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        assert result.committed is True
+        # A caller checking result.committed knows a retry would duplicate
+        # durable data — the committed flag makes blind retry preventable.
+        assert store.writes == 1
+
+
+# ---------------------------------------------------------------------------
+# Abandoned-reservation observability (AR01–AR04)
+# ---------------------------------------------------------------------------
+
+
+class TestAbandonedReservationObservability:
+    def test_ar01_active_reservation_visible_after_reserve(self):
+        mgr = _manager()
+        before = len(mgr.active_reservations())
+        mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        assert len(mgr.active_reservations()) == before + 1
+
+    def test_ar02_commit_removes_reservation_from_active_registry(self):
+        mgr = _manager()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        assert any(
+            r["reservation_id"] == reservation.reservation_id
+            for r in mgr.active_reservations()
+        )
+        mgr.commit(reservation)
+        assert not any(
+            r["reservation_id"] == reservation.reservation_id
+            and r["state"] == "active"
+            for r in mgr.active_reservations()
+        )
+
+    def test_ar03_rollback_removes_reservation_from_active_registry(self):
+        mgr = _manager()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        mgr.rollback(reservation)
+        assert not any(
+            r["reservation_id"] == reservation.reservation_id
+            and r["state"] == "active"
+            for r in mgr.active_reservations()
+        )
+
+    def test_ar04_old_active_reservation_observable_with_age(self):
+        mgr = _manager()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        active = [
+            r for r in mgr.active_reservations()
+            if r["reservation_id"] == reservation.reservation_id
+        ]
+        assert len(active) == 1
+        assert active[0]["state"] == "active"
+        assert active[0]["age_seconds"] >= 0

@@ -23,11 +23,15 @@ Design
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from enum import Enum
+from types import MappingProxyType
+from typing import Any, Literal
 from uuid import uuid4
 
 __all__ = [
@@ -37,6 +41,9 @@ __all__ = [
     "QuotaExceededError",
     "QuotaCharge",
     "IngestReservation",
+    "IngestResult",
+    "ReservedTenantBatch",
+    "ReservationState",
     "TenantClaimMismatchError",
     "TenantContext",
     "QuotaEnforcer",
@@ -181,6 +188,9 @@ class QuotaCharge:
     n_records: int
     n_bytes: int
     subjects: frozenset[str]
+    # §5 binding: the SHA-256 of the exact immutable payload this charge
+    # accounts for. Set by reservation flows; None for direct enforcer use.
+    payload_sha256: str | None = None
 
 
 class QuotaEnforcer:
@@ -219,6 +229,7 @@ class QuotaEnforcer:
         n_records: int,
         n_bytes: int = 0,
         subject_ids: list[str] | None = None,
+        payload_sha256: str | None = None,
     ) -> QuotaCharge:
         """Verify that adding *n_records* / *n_bytes* / *subject_ids* does not
         breach *policy*.
@@ -270,6 +281,7 @@ class QuotaEnforcer:
                 n_records=n_records,
                 n_bytes=n_bytes,
                 subjects=frozenset(subjects),
+                payload_sha256=payload_sha256,
             )
             self._active_charges[charge.charge_id] = charge
             return charge
@@ -355,22 +367,57 @@ class QuotaEnforcer:
         over-decrementing."""
         with self._lock:
             self._require_active_unlocked(charge)
-            today = self._today_utc()
-            usage = self._daily.get(charge.tenant_id)
-            if usage is not None and usage.date_str == today:
-                usage.records = max(0, usage.records - charge.n_records)
-            if charge.n_bytes:
-                current = self._bytes.get(charge.tenant_id, 0)
-                self._bytes[charge.tenant_id] = max(0, current - charge.n_bytes)
-            refs = self._subjects.get(charge.tenant_id, {})
-            for subject in charge.subjects:
-                current_refs = refs.get(subject, 0)
-                if current_refs <= 1:
-                    refs.pop(subject, None)
-                else:
-                    refs[subject] = current_refs - 1
-            # Terminal state: the charge can never be refunded or committed again.
+            self._refund_unlocked(charge)
             del self._active_charges[charge.charge_id]
+
+    def commit_many(self, charges: tuple[QuotaCharge, ...]) -> None:
+        """Atomically finalize MANY charges (§10/§11).
+
+        Acquires ONE lock, validates EVERY charge, and performs ZERO mutation
+        if any validation fails — an invalid charge can never produce a
+        partially committed reservation."""
+        with self._lock:
+            registered: list[QuotaCharge] = []
+            for charge in charges:
+                self._require_active_unlocked(charge)
+                registered.append(charge)
+            # Validation completed — no partial commit is possible from here.
+            for charge in registered:
+                del self._active_charges[charge.charge_id]
+
+    def refund_many(self, charges: tuple[QuotaCharge, ...]) -> None:
+        """Atomically roll back MANY charges (§10/§12).
+
+        Same all-or-nothing contract as :meth:`commit_many`: one lock, full
+        validation before any mutation, reversed-order refund."""
+        with self._lock:
+            registered: list[QuotaCharge] = []
+            for charge in charges:
+                self._require_active_unlocked(charge)
+                registered.append(charge)
+            # Validation completed. No partial mutation is possible from here.
+            for charge in reversed(registered):
+                self._refund_unlocked(charge)
+            for charge in registered:
+                del self._active_charges[charge.charge_id]
+
+    def _refund_unlocked(self, charge: QuotaCharge) -> None:
+        """Refund arithmetic. Caller MUST hold ``self._lock`` (§12: the
+        non-reentrant lock forbids calling the public refund() here)."""
+        today = self._today_utc()
+        usage = self._daily.get(charge.tenant_id)
+        if usage is not None and usage.date_str == today:
+            usage.records = max(0, usage.records - charge.n_records)
+        if charge.n_bytes:
+            current = self._bytes.get(charge.tenant_id, 0)
+            self._bytes[charge.tenant_id] = max(0, current - charge.n_bytes)
+        refs = self._subjects.get(charge.tenant_id, {})
+        for subject in charge.subjects:
+            current_refs = refs.get(subject, 0)
+            if current_refs <= 1:
+                refs.pop(subject, None)
+            else:
+                refs[subject] = current_refs - 1
 
 
 # ---------------------------------------------------------------------------
@@ -526,27 +573,94 @@ class AuditEvent:
         return cls(**data)
 
 
+def _encode_reserved_payload(records: list[dict[str, Any]]) -> bytes:
+    """ONE canonical encoding policy for reserved tenant batches (P1-A): the
+    quota is charged on these bytes and these bytes are what the durable store
+    writes — never two different serializations of the same records."""
+    return json.dumps(
+        records,
+        ensure_ascii=False,
+        default=str,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+@dataclass(frozen=True)
+class ReservedTenantBatch:
+    """Immutable, canonically serialized payload for ONE tenant reservation.
+
+    P1-A: the durable payload is the frozen ``payload`` bytes — validated
+    content, quota-accounted bytes, and durably stored bytes are the SAME
+    bytes. ``payload_sha256`` makes the reservation self-verifying."""
+
+    tenant_id: TenantID
+    payload: bytes
+    payload_sha256: str
+    n_records: int
+    n_bytes: int
+
+    def as_mapping(self) -> Mapping[str, Any]:
+        """Read-only view of the tenant payload (compatibility convenience —
+        the bytes remain the authoritative durable content)."""
+        return MappingProxyType(
+            {"tenant_id": self.tenant_id, "payload": self.payload}
+        )
+
+
+class ReservationState(str, Enum):
+    """Settlement lifecycle of a reservation (§9): exactly one terminal
+    state — COMMITTED or ROLLED_BACK — with every transition fail-closed."""
+
+    ACTIVE = "active"
+    COMMITTED = "committed"
+    ROLLED_BACK = "rolled_back"
+
+
 @dataclass(frozen=True)
 class IngestReservation:
     """Admission state of one `reserve_ingest()` call — NOT yet committed.
 
-    Holds everything a caller needs to finish the ingest transaction:
-      * `admitted` — the per-tenant record sets that passed quota admission
-        (immutable tuples; convert to lists after commit if needed);
-      * `charges` — the exact QuotaCharge objects consumed by admission, to be
-        finalized by :meth:`TenantIsolationManager.commit` or reversed by
-        :meth:`TenantIsolationManager.rollback`;
-      * `audit_events` — PREPARED success events, emitted only by
-        ``commit()`` once durable storage has actually succeeded. A rolled
-        back reservation therefore never leaves a false ingest-success record
-        behind.
+    P1-A: the authoritative durable payload is a tuple of frozen
+    :class:`ReservedTenantBatch` objects — there is no mutable top-level dict
+    that a caller could mutate after quota validation. Tenant lookup is
+    available via :meth:`batch_for`.
 
-    Storage quota becomes COMMITTED only after durable storage has succeeded.
-    """
+    Every reservation MUST be settled exactly once — via
+    :meth:`TenantIsolationManager.commit` (durable write succeeded) or
+    :meth:`TenantIsolationManager.rollback` (durable write failed). An
+    abandoned reservation stays visible in ``active_reservations()`` for
+    reconciliation; it is never silently auto-refunded (P2-D), because a
+    silent refund could undo quota for a durable write that actually
+    happened."""
 
-    admitted: dict[TenantID, tuple[dict[str, Any], ...]]
+    reservation_id: str
+    created_at_ms: int
+    expires_at_ms: int | None
+    batches: tuple[ReservedTenantBatch, ...]
     charges: tuple[QuotaCharge, ...]
     audit_events: tuple[AuditEvent, ...]
+
+    def batch_for(self, tenant_id: TenantID) -> ReservedTenantBatch | None:
+        for batch in self.batches:
+            if batch.tenant_id == tenant_id:
+                return batch
+        return None
+
+
+@dataclass(frozen=True)
+class IngestResult:
+    """Outcome of a FULLY SETTLED ingest (durable write + quota settlement).
+
+    P1-C: post-commit audit-delivery failure is NOT an ingest failure —
+    ``committed`` stays True and the audit problem is reported through
+    ``audit_status``/``audit_error`` so callers cannot mistake it for a
+    retry-safe pre-commit error."""
+
+    committed: bool
+    batches: tuple[ReservedTenantBatch, ...]
+    audit_status: Literal["delivered", "failed"]
+    audit_error: str | None = None
 
 
 class AuditLogger:
@@ -567,12 +681,19 @@ class AuditLogger:
         self._sink_path = sink_path
 
     def log(self, event: AuditEvent) -> None:
-        """Append *event* to the log."""
+        """Append *event* to the log.
+
+        Sink authority (§20): when a file sink is configured, the FILE is the
+        authoritative sink — it is written FIRST and flushed, and the in-memory
+        mirror is only updated on file success. The reverse order would leave
+        an in-memory record for an event the external sink never received."""
+        line = event.to_json()
         with self._lock:
-            self._events.append(event)
             if self._sink_path:
                 with open(self._sink_path, "a", encoding="utf-8") as fh:
-                    fh.write(event.to_json() + "\n")
+                    fh.write(line + "\n")
+                    fh.flush()
+            self._events.append(event)
 
     def events(
         self,
@@ -629,6 +750,7 @@ class TenantIsolationManager:
         audit_logger: AuditLogger | None = None,
         actor: str = "system",
         require_trusted_context: bool = True,
+        reservation_ttl_ms: int | None = None,
     ) -> None:
         self.router = router or TenantRouter([])
         self.enforcer = enforcer or QuotaEnforcer()
@@ -640,6 +762,36 @@ class TenantIsolationManager:
         # multi-tenancy — and requires the explicit opt-out
         # (require_trusted_context=False).
         self.require_trusted_context = require_trusted_context
+        # Reservation settlement registry (§9/§13): reservation_id → state.
+        # Lock ordering (§14): reservation_lock -> enforcer._lock, held
+        # briefly, with NO audit/durable/network I/O inside either lock.
+        self._reservation_states: dict[str, ReservationState] = {}
+        self._reservation_lock = threading.Lock()
+        self._reservation_created_at: dict[str, int] = {}
+        self._reservation_expires_at: dict[str, int] = {}
+        # P2-D (§22): optional TTL for reconciliation diagnostics. Expiry
+        # NEVER auto-refunds — a reservation expiring only means it requires
+        # manual reconciliation, because the durable store may have committed.
+        self.reservation_ttl_ms = reservation_ttl_ms
+
+    def active_reservations(self) -> list[dict[str, Any]]:
+        """Reconciliation diagnostics (§23): every ACTIVE reservation with its
+        age. Long-lived ACTIVE reservations are an operational alert, never
+        silently auto-refunded."""
+        now = int(time.time() * 1000)
+        with self._reservation_lock:
+            out = []
+            for rid, state in self._reservation_states.items():
+                if state is not ReservationState.ACTIVE:
+                    continue
+                created = self._reservation_created_at.get(rid, 0)
+                out.append({
+                    "reservation_id": rid,
+                    "state": state.value,
+                    "age_seconds": (now - created) / 1000.0,
+                    "expires_at_ms": self._reservation_expires_at.get(rid),
+                })
+            return out
 
     def reserve_ingest(
         self,
@@ -649,8 +801,10 @@ class TenantIsolationManager:
         """Adjudicate admission for *records* WITHOUT finalizing anything.
 
         Responsibilities (and nothing more): trusted-context validation, tenant
-        routing, byte accounting, quota charging, admitted-mapping construction,
-        and preparation of the success audit events.
+        routing, CANONICAL payload serialization (P1-A — the frozen payload
+        bytes are the quota-accounted bytes AND the durable bytes), quota
+        charging bound to the payload digest (§5), and preparation of the
+        success audit events.
 
         It must NOT emit success audits, commit quota charges, or perform
         durable storage writes — those belong to :meth:`commit` after the
@@ -665,6 +819,11 @@ class TenantIsolationManager:
         Storage quota becomes COMMITTED only after durable storage has
         succeeded — a later durable-write failure rolls the reservation back
         instead of leaving phantom storage-byte usage behind.
+
+        The returned reservation MUST be settled exactly once (P2-D):
+        :meth:`commit` or :meth:`rollback`. Abandoned reservations stay
+        visible via :meth:`active_reservations` — they are never silently
+        auto-refunded.
         """
         if self.require_trusted_context and tenant_context is None:
             self.audit_logger.log(AuditEvent(
@@ -700,21 +859,25 @@ class TenantIsolationManager:
                 raise
             grouped.setdefault(tid, []).append(rec)
 
-        # Byte accounting (Q06 semantics): quota is measured over the encoded
-        # JSON payload size, UTF-8, before compression — the wire size the
-        # pipeline actually ingests, not Python object memory size.
-        n_bytes_by_tenant: dict[TenantID, int] = {
-            tid: len(json.dumps(recs, ensure_ascii=False, default=str).encode("utf-8"))
-            for tid, recs in grouped.items()
-        }
-
-        admitted: dict[TenantID, tuple[dict[str, Any], ...]] = {}
+        admitted_batches: list[ReservedTenantBatch] = []
         # Exact QuotaCharge objects as charged — rollback replays them
         # verbatim, in reverse order (transaction semantics).
         charged: list[QuotaCharge] = []
         pending_audit: list[AuditEvent] = []
         try:
             for tid, recs in grouped.items():
+                # P1-A: ONE canonical encoding of the tenant batch. The quota
+                # is charged on these bytes and these bytes are what the
+                # durable store writes — validated content == accounted bytes
+                # == stored bytes. No reserialization divergence is possible.
+                payload = _encode_reserved_payload(recs)
+                batch = ReservedTenantBatch(
+                    tenant_id=tid,
+                    payload=payload,
+                    payload_sha256=hashlib.sha256(payload).hexdigest(),
+                    n_records=len(recs),
+                    n_bytes=len(payload),
+                )
                 cfg = self.router.config_for(tid)
                 quota = cfg.quota if cfg else QuotaPolicy()
                 subject_ids = list({
@@ -725,7 +888,8 @@ class TenantIsolationManager:
                 try:
                     charge = self.enforcer.check_and_record(
                         tid, quota, n_records=len(recs), subject_ids=subject_ids,
-                        n_bytes=n_bytes_by_tenant[tid],
+                        n_bytes=batch.n_bytes,
+                        payload_sha256=batch.payload_sha256,
                     )
                 except QuotaExceededError as exc:
                     # §7: ROLLBACK FIRST — a quota failure must never leave
@@ -748,7 +912,7 @@ class TenantIsolationManager:
                                 "limit": exc.limit,
                                 "current": exc.current,
                                 "n_records_attempted": len(recs),
-                                "n_bytes_attempted": n_bytes_by_tenant[tid],
+                                "n_bytes_attempted": batch.n_bytes,
                             },
                         ))
                     except Exception as audit_exc:  # noqa: BLE001
@@ -760,7 +924,7 @@ class TenantIsolationManager:
                         ) from audit_exc
                     raise
                 charged.append(charge)
-                admitted[tid] = tuple(recs)
+                admitted_batches.append(batch)
                 # Success audit is PREPARED, not emitted: it must never claim
                 # success for a batch that later fails or rolls back.
                 pending_audit.append(AuditEvent(
@@ -772,7 +936,8 @@ class TenantIsolationManager:
                     detail={
                         "n_records": len(recs),
                         "n_subjects": len(subject_ids),
-                        "n_bytes": n_bytes_by_tenant[tid],
+                        "n_bytes": batch.n_bytes,
+                        "payload_sha256": batch.payload_sha256,
                     },
                 ))
         except Exception:
@@ -783,33 +948,69 @@ class TenantIsolationManager:
                 self.enforcer.refund(c)
             raise
 
-        return IngestReservation(
-            admitted=admitted,
+        now_ms = int(time.time() * 1000)
+        reservation_id = uuid4().hex
+        expires_at_ms = (
+            now_ms + self.reservation_ttl_ms
+            if self.reservation_ttl_ms is not None
+            else None
+        )
+        reservation = IngestReservation(
+            reservation_id=reservation_id,
+            created_at_ms=now_ms,
+            expires_at_ms=expires_at_ms,
+            batches=tuple(admitted_batches),
             charges=tuple(charged),
             audit_events=tuple(pending_audit),
         )
+        with self._reservation_lock:
+            self._reservation_states[reservation.reservation_id] = ReservationState.ACTIVE
+            self._reservation_created_at[reservation.reservation_id] = now_ms
+            if expires_at_ms is not None:
+                self._reservation_expires_at[reservation.reservation_id] = expires_at_ms
+        return reservation
 
-    def commit(self, reservation: IngestReservation) -> None:
-        """Finalize a reservation after durable storage has succeeded.
+    def commit(self, reservation: IngestReservation) -> IngestResult:
+        """Atomically finalize a reservation after durable storage succeeded
+        (§13): state check + quota settlement + state transition happen under
+        the reservation lock with no I/O; exactly one terminal transition can
+        win, and quota settlement is all-or-nothing (commit_many).
 
-        Order: quota lifecycle first (charges become COMMITTED and
-        irreversible), then success audit delivery. Audit delivery failure
-        after commit is surfaced to the caller but must NOT roll back
-        already-durable data or committed quota — audit is append-only
-        observability, not part of the storage transaction (§8).
-        """
-        for charge in reservation.charges:
-            self.enforcer.commit(charge)
-        for event in reservation.audit_events:
-            self.audit_logger.log(event)
+        Success audit delivery is a post-commit obligation: a delivery failure
+        is REPORTED in the returned IngestResult (audit_status="failed") and
+        never rolls back committed quota or durable data (§15/§16)."""
+        with self._reservation_lock:
+            state = self._reservation_states.get(reservation.reservation_id)
+            if state is not ReservationState.ACTIVE:
+                raise RuntimeError(
+                    f"reservation {reservation.reservation_id} is not active "
+                    f"(state: {state.value if state else 'unknown'})"
+                )
+            self.enforcer.commit_many(reservation.charges)
+            self._reservation_states[reservation.reservation_id] = ReservationState.COMMITTED
+
+        return self._deliver_success_audit(reservation)
 
     def rollback(self, reservation: IngestReservation) -> None:
-        """Undo a reservation whose durable write failed: refund every charge
-        in reverse order. No success audit is emitted; a single
-        ``ingest_aborted`` event is recorded instead (§9)."""
-        for charge in reversed(reservation.charges):
-            self.enforcer.refund(charge)
-        first_tenant = next(iter(reservation.admitted), "_unknown")
+        """Atomically undo a reservation whose durable write failed (§13):
+        every charge refunded (reverse order) or none; state transitions to
+        ROLLED_BACK. Emits a single ``ingest_aborted`` event — never per-
+        tenant success events (P1-B)."""
+        with self._reservation_lock:
+            state = self._reservation_states.get(reservation.reservation_id)
+            if state is not ReservationState.ACTIVE:
+                raise RuntimeError(
+                    f"reservation {reservation.reservation_id} is not active "
+                    f"(state: {state.value if state else 'unknown'})"
+                )
+            self.enforcer.refund_many(reservation.charges)
+            self._reservation_states[reservation.reservation_id] = ReservationState.ROLLED_BACK
+
+        first_tenant = (
+            reservation.batches[0].tenant_id
+            if reservation.batches
+            else "_unknown"
+        )
         self.audit_logger.log(AuditEvent(
             event_type="ingest_aborted",
             tenant_id=first_tenant,
@@ -818,29 +1019,60 @@ class TenantIsolationManager:
             outcome="blocked",
             detail={
                 "reason": "durable storage failed; reservation rolled back",
-                "n_tenants": len(reservation.admitted),
+                "n_tenants": len(reservation.batches),
             },
         ))
+
+    def _deliver_success_audit(
+        self, reservation: IngestReservation
+    ) -> IngestResult:
+        """Post-commit success-audit delivery (§18): delivery failure is
+        reported, never rolled back."""
+        try:
+            for event in reservation.audit_events:
+                self.audit_logger.log(event)
+            return IngestResult(
+                committed=True,
+                batches=reservation.batches,
+                audit_status="delivered",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return IngestResult(
+                committed=True,
+                batches=reservation.batches,
+                audit_status="failed",
+                audit_error=repr(exc),
+            )
 
     def ingest_to_store(
         self,
         records: list[dict[str, Any]],
         store: Any,
         tenant_context: TenantContext | None = None,
-    ) -> dict[TenantID, tuple[dict[str, Any], ...]]:
-        """Load-bearing production path: reserve → durable write → commit.
+    ) -> IngestResult:
+        """Load-bearing production path (§6): reserve → durable write of the
+        EXACT reserved payload bytes (hash-verified batches) → atomic commit.
 
-        The storage quota becomes COMMITTED only after ``store.write`` has
-        succeeded; a durable-write failure rolls the whole reservation back
-        (quota restored, zero success audits) before the error propagates."""
+        The storage quota becomes COMMITTED only after ``write_batch`` has
+        succeeded for every tenant batch; a durable-write failure rolls the
+        whole reservation back (quota restored, zero success audits) before
+        the error propagates. Returns an :class:`IngestResult` — a
+        post-commit audit failure is reported through it, not raised, so a
+        caller can never mistake a committed ingest for a retry-safe failure
+        (P1-C)."""
         reservation = self.reserve_ingest(records, tenant_context=tenant_context)
         try:
-            store.write(reservation.admitted)
+            for batch in reservation.batches:
+                store.write_batch(
+                    batch.tenant_id,
+                    batch.payload,
+                    payload_sha256=batch.payload_sha256,
+                    n_records=batch.n_records,
+                )
         except Exception:
             self.rollback(reservation)
             raise
-        self.commit(reservation)
-        return reservation.admitted
+        return self.commit(reservation)
 
     def ingest(
         self,
@@ -856,15 +1088,16 @@ class TenantIsolationManager:
             :meth:`ingest_to_store` / :meth:`reserve_ingest` for production
             durable writes.
 
-        Returns a mapping of ``TenantID`` → list of admitted records.
-        Raises ``QuotaExceededError`` if any tenant's quota would be breached
-        (with all-or-nothing batch refund semantics preserved).
+        Returns a mapping of ``TenantID`` → admitted records decoded from the
+        canonical reserved payloads (§7 compatibility decode — the payload
+        bytes remain authoritative).
         """
         reservation = self.reserve_ingest(records, tenant_context=tenant_context)
-        self.commit(reservation)
+        result = self.commit(reservation)
+        del result
         return {
-            tid: list(recs)
-            for tid, recs in reservation.admitted.items()
+            batch.tenant_id: json.loads(batch.payload.decode("utf-8"))
+            for batch in reservation.batches
         }
 
     def query(
