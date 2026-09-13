@@ -21,6 +21,7 @@ from evomerge.multi_tenant import (
     QuotaEnforcer,
     QuotaExceededError,
     QuotaPolicy,
+    ReservationState,
     TenantClaimMismatchError,
     TenantConfig,
     TenantContext,
@@ -655,24 +656,82 @@ class RecordingAuditLogger(AuditLogger):
 
 
 class FailingStore:
-    def write_batch(self, tenant_id, payload, *, payload_sha256, n_records):
+    """Reservation-atomic store that always fails: publishes nothing."""
+
+    def __init__(self):
+        self.writes = 0
+
+    def write_reservation(self, reservation_id, batches, *, composition_sha256):
+        self.writes += 1
         raise OSError("storage unavailable")
+
+    def reservation_status(self, reservation_id):
+        return "absent"
 
 
 class MemoryStore:
-    """§6 interface: writes the EXACT reserved payload bytes, hash-verified."""
+    """§11 staging + commit-manifest store for non-transactional backends.
 
-    def __init__(self):
+    write_reservation stages every batch (hash-verified), then publishes ONE
+    authoritative commit manifest — ALL batches become visible together or
+    NONE do (DS01/DS02). Idempotent by (reservation_id, composition_sha256);
+    a different composition under the same id is a hard failure (§12/DS05)."""
+
+    def __init__(self, fail_on_tenant: str | None = None):
+        self.staged: dict[str, dict[str, bytes]] = {}
+        self.manifests: dict[str, dict] = {}
         self.stored: dict[str, bytes] = {}
         self.writes = 0
+        self.fail_on_tenant = fail_on_tenant
 
-    def write_batch(self, tenant_id, payload, *, payload_sha256, n_records):
+    def write_reservation(self, reservation_id, batches, *, composition_sha256):
         import hashlib
-        assert hashlib.sha256(payload).hexdigest() == payload_sha256, (
-            "durable bytes must hash to the reserved payload digest"
-        )
-        self.stored[tenant_id] = bytes(payload)
+
+        manifest = self.manifests.get(reservation_id)
+        if manifest is not None:
+            if manifest["composition_sha256"] == composition_sha256:
+                return  # §12 idempotent: no duplicate data
+            raise RuntimeError(
+                f"composition mismatch for committed reservation {reservation_id}"
+            )
+
+        staged: dict[str, bytes] = {}
+        self.staged[reservation_id] = staged
+        for batch in batches:
+            digest = hashlib.sha256(batch.payload).hexdigest()
+            assert digest == batch.payload_sha256, (
+                "durable bytes must hash to the reserved payload digest"
+            )
+            if self.fail_on_tenant == batch.tenant_id:
+                raise OSError(f"storage unavailable (tenant {batch.tenant_id})")
+            staged[batch.tenant_id] = bytes(batch.payload)
+
+        # All staging succeeded → publish ONE commit manifest (atomic gate).
+        self.manifests[reservation_id] = {
+            "reservation_id": reservation_id,
+            "composition_sha256": composition_sha256,
+            "batches": [
+                {
+                    "tenant_id": b.tenant_id,
+                    "payload_sha256": b.payload_sha256,
+                    "n_records": b.n_records,
+                    "n_bytes": b.n_bytes,
+                }
+                for b in batches
+            ],
+            "state": "committed",
+        }
+        for tenant_id, payload in staged.items():
+            self.stored[tenant_id] = payload
         self.writes += 1
+        self.staged.pop(reservation_id, None)
+
+    def reservation_status(self, reservation_id):
+        if reservation_id in self.manifests:
+            return "committed"
+        if reservation_id in self.staged:
+            return "staged"
+        return "absent"
 
 
 def _tx_manager(audit_logger=None, **kwargs):
@@ -803,12 +862,12 @@ class TestTransactionBoundary:
         mgr = _tx_manager()
         reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
         store = MemoryStore()
-        for batch in reservation.batches:
-            store.write_batch(
-                batch.tenant_id, batch.payload,
-                payload_sha256=batch.payload_sha256, n_records=batch.n_records,
-            )
-        mgr.commit(reservation)
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        mgr.commit(reservation.reservation_id)
         for charge in reservation.charges:
             with pytest.raises(RuntimeError):
                 mgr.enforcer.refund(charge)
@@ -917,11 +976,10 @@ class TestReservationIntegrity:
 
         # Hostile caller mutates the ORIGINAL records after validation.
         source[0]["blob"] = "X" * 1_000_000
-        store.write_batch(
-            reservation.batches[0].tenant_id,
-            reservation.batches[0].payload,
-            payload_sha256=reservation.batches[0].payload_sha256,
-            n_records=reservation.batches[0].n_records,
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
         )
         assert hashlib.sha256(store.stored["tenant-a"]).hexdigest() == (
             reservation.batches[0].payload_sha256
@@ -962,11 +1020,11 @@ class TestReservationIntegrity:
         reservation = mgr.reserve_ingest(
             [_record(subject_id="aaa-1", blob="z" * 500)], tenant_context=None
         )
-        for batch in reservation.batches:
-            store.write_batch(
-                batch.tenant_id, batch.payload,
-                payload_sha256=batch.payload_sha256, n_records=batch.n_records,
-            )
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
         stored = store.stored["tenant-a"]
         assert hashlib.sha256(stored).hexdigest() == reservation.batches[0].payload_sha256
 
@@ -984,11 +1042,10 @@ class TestReservationIntegrity:
         source[0]["run_context"]["org"] = "tenant-b"
         source[0]["metadata"] = {"injected": True}
 
-        store.write_batch(
-            reservation.batches[0].tenant_id,
-            reservation.batches[0].payload,
-            payload_sha256=reservation.batches[0].payload_sha256,
-            n_records=reservation.batches[0].n_records,
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
         )
         assert store.stored["tenant-a"] == original_payload
         assert original_sha == hashlib.sha256(original_payload).hexdigest()
@@ -1265,3 +1322,271 @@ class TestAbandonedReservationObservability:
         assert len(active) == 1
         assert active[0]["state"] == "active"
         assert active[0]["age_seconds"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Forged-reservation denial (RF01–RF06)
+# ---------------------------------------------------------------------------
+
+
+class TestForgedReservationDenial:
+    """§7: settlement is BY reservation_id against the manager-owned
+    composition. Caller-supplied reconstructions are rejected (RF01–RF03 are
+    structurally impossible on the id path — these tests prove the
+    compatibility object path checks identity too)."""
+
+    def _mgr_and_reservation(self):
+        mgr = _manager(
+            router=TenantRouter([
+                TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aaa-"]),
+                TenantConfig(tenant_id="tenant-b", subject_id_prefixes=["bbb-"]),
+            ]),
+            require_trusted_context=False,
+        )
+        reservation = mgr.reserve_ingest([
+            _record(subject_id="aaa-1"),
+            _record(subject_id="bbb-1"),
+        ], tenant_context=None)
+        return mgr, reservation
+
+    def test_rf01_subset_charges_under_valid_id_denied(self):
+        import dataclasses
+        mgr, reservation = self._mgr_and_reservation()
+        subset = dataclasses.replace(reservation, charges=reservation.charges[:1])
+        with pytest.raises(RuntimeError):
+            mgr.commit(subset)
+        # RF06: the failed forged settlement leaves all REAL charges ACTIVE.
+        assert mgr.enforcer._active_charge_count() == len(reservation.charges)
+        mgr.commit(reservation.reservation_id)
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_rf02_altered_batch_under_valid_id_denied(self):
+        import dataclasses
+        mgr, reservation = self._mgr_and_reservation()
+        tampered_batch = dataclasses.replace(
+            reservation.batches[0], payload=b'{"injected":true}'
+        )
+        altered = dataclasses.replace(
+            reservation, batches=(tampered_batch, *reservation.batches[1:])
+        )
+        with pytest.raises(RuntimeError):
+            mgr.commit(altered)
+        mgr.commit(reservation.reservation_id)
+
+    def test_rf03_altered_audit_descriptor_under_valid_id_denied(self):
+        import dataclasses
+        mgr, reservation = self._mgr_and_reservation()
+        forged_audit = dataclasses.replace(
+            reservation.audit_events[0], outcome="failure"
+        )
+        altered = dataclasses.replace(
+            reservation, audit_events=(forged_audit, *reservation.audit_events[1:])
+        )
+        with pytest.raises(RuntimeError):
+            mgr.commit(altered)
+        mgr.commit(reservation.reservation_id)
+
+    def test_rf04_unknown_reservation_id_denied(self):
+        mgr = _manager()
+        with pytest.raises(RuntimeError, match="unknown reservation"):
+            mgr.commit("not-a-reservation")
+        with pytest.raises(RuntimeError, match="unknown reservation"):
+            mgr.rollback("not-a-reservation")
+
+    def test_rf05_reordered_composition_denied(self):
+        import dataclasses
+        mgr, reservation = self._mgr_and_reservation()
+        reordered = dataclasses.replace(
+            reservation,
+            charges=tuple(reversed(reservation.charges)),
+        )
+        with pytest.raises(RuntimeError):
+            mgr.commit(reordered)
+        mgr.commit(reservation.reservation_id)
+
+    def test_rf06_failed_forged_settlement_leaves_real_charges_active(self):
+        import dataclasses
+        mgr, reservation = self._mgr_and_reservation()
+        subset = dataclasses.replace(reservation, charges=reservation.charges[:1])
+        with pytest.raises(RuntimeError):
+            mgr.commit(subset)
+        # The real reservation still settles normally afterwards.
+        result = mgr.commit(reservation.reservation_id)
+        assert result.committed is True
+
+
+# ---------------------------------------------------------------------------
+# Durable atomicity (DS01–DS06) via staging + commit-manifest store
+# ---------------------------------------------------------------------------
+
+
+class TestDurableAtomicity:
+    def _mgr_and_store(self, fail_on_tenant: str | None = None):
+        mgr = _manager(
+            router=TenantRouter([
+                TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aaa-"]),
+                TenantConfig(tenant_id="tenant-b", subject_id_prefixes=["bbb-"]),
+                TenantConfig(tenant_id="tenant-c", subject_id_prefixes=["ccc-"]),
+            ]),
+            require_trusted_context=False,
+        )
+        return mgr, MemoryStore(fail_on_tenant=fail_on_tenant)
+
+    def test_ds01_second_tenant_write_failure_publishes_nothing(self):
+        mgr, store = self._mgr_and_store(fail_on_tenant="tenant-b")
+        with pytest.raises(OSError):
+            mgr.ingest_to_store([
+                _record(subject_id="aaa-1"),
+                _record(subject_id="bbb-fail"),
+            ], store, tenant_context=None)
+        # Zero committed tenant data visible; manifest was never published.
+        assert store.stored == {}
+        assert not any(
+            m["state"] == "committed" for m in store.manifests.values()
+        )
+
+    def test_ds02_failure_on_final_tenant_publishes_nothing(self):
+        mgr, store = self._mgr_and_store(fail_on_tenant="tenant-c")
+        with pytest.raises(OSError):
+            mgr.ingest_to_store([
+                _record(subject_id="aaa-1"),
+                _record(subject_id="bbb-1"),
+                _record(subject_id="ccc-fail"),
+            ], store, tenant_context=None)
+        assert store.stored == {}
+
+    def test_ds03_success_publishes_all_tenant_batches_together(self):
+        mgr, store = self._mgr_and_store()
+        result = mgr.ingest_to_store([
+            _record(subject_id="aaa-1"),
+            _record(subject_id="bbb-1"),
+            _record(subject_id="ccc-1"),
+        ], store, tenant_context=None)
+        assert result.committed is True
+        assert set(store.stored) == {"tenant-a", "tenant-b", "tenant-c"}
+        manifest = next(iter(store.manifests.values()))
+        assert manifest["state"] == "committed"
+        assert len(manifest["batches"]) == 3
+
+    def test_ds04_retry_same_id_same_composition_is_idempotent(self):
+        mgr, store = self._mgr_and_store()
+        reservation = mgr.reserve_ingest([
+            _record(subject_id="aaa-1"),
+            _record(subject_id="bbb-1"),
+        ], tenant_context=None)
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        snapshot = dict(store.stored)
+        # Idempotent replay: same id + same composition → success, no dupes.
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        assert store.stored == snapshot
+
+    def test_ds05_same_id_different_composition_hard_fails(self):
+        import dataclasses
+        mgr, store = self._mgr_and_store()
+        reservation = mgr.reserve_ingest(
+            [_record(subject_id="aaa-1")], tenant_context=None
+        )
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        tampered = dataclasses.replace(
+            reservation.batches[0], payload=b'{"evil":true}'
+        )
+        # Same id + DIFFERENT composition digest → hard failure (§12). (A
+        # payload tampered WITHOUT updating its digest is caught by the
+        # store's hash verification instead — see MemoryStore's assertion.)
+        with pytest.raises(RuntimeError, match="composition mismatch"):
+            store.write_reservation(
+                reservation.reservation_id,
+                (tampered,),
+                composition_sha256="0" * 64,
+            )
+
+    def test_ds06_committed_manifest_matches_reservation_composition(self):
+        mgr, store = self._mgr_and_store()
+        reservation = mgr.reserve_ingest([
+            _record(subject_id="aaa-1", blob="m" * 100),
+        ], tenant_context=None)
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        manifest = store.manifests[reservation.reservation_id]
+        assert manifest["composition_sha256"] == reservation.composition_sha256
+        for entry, batch in zip(manifest["batches"], reservation.batches, strict=True):
+            assert entry["tenant_id"] == batch.tenant_id
+            assert entry["payload_sha256"] == batch.payload_sha256
+            assert entry["n_records"] == batch.n_records
+            assert entry["n_bytes"] == batch.n_bytes
+
+
+# ---------------------------------------------------------------------------
+# Crash/reconciliation (RC01–RC03)
+# ---------------------------------------------------------------------------
+
+
+class TestCrashReconciliation:
+    def _mgr_and_store(self):
+        mgr = _manager(
+            router=TenantRouter([
+                TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aaa-"]),
+            ]),
+            require_trusted_context=False,
+        )
+        return mgr, MemoryStore()
+
+    def test_rc01_store_committed_manager_active_divergence_detectable(self):
+        mgr, store = self._mgr_and_store()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        # Simulate crash after store commit, before manager commit.
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        # Manager still reports ACTIVE — the divergence is detectable.
+        assert (
+            mgr._reservations[reservation.reservation_id].state
+            is ReservationState.ACTIVE
+        )
+        assert store.reservation_status(reservation.reservation_id) == "committed"
+
+    def test_rc02_manager_active_store_absent_reconciliation_rolls_back(self):
+        mgr, store = self._mgr_and_store()
+        before = mgr.enforcer.usage("tenant-a")
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        # Store never saw this reservation → reconciliation rolls it back.
+        mgr.reconcile_reservation(reservation.reservation_id, store)
+        assert mgr.enforcer.usage("tenant-a") == before
+        assert (
+            mgr._reservations[reservation.reservation_id].state
+            is ReservationState.ROLLED_BACK
+        )
+
+    def test_rc03_manager_active_store_committed_reconciliation_commits(self):
+        mgr, store = self._mgr_and_store()
+        before = mgr.enforcer.usage("tenant-a")
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        store.write_reservation(
+            reservation.reservation_id,
+            reservation.batches,
+            composition_sha256=reservation.composition_sha256,
+        )
+        mgr.reconcile_reservation(reservation.reservation_id, store)
+        after = mgr.enforcer.usage("tenant-a")
+        assert after["records_today"] == before["records_today"] + 1
+        assert (
+            mgr._reservations[reservation.reservation_id].state
+            is ReservationState.COMMITTED
+        )
