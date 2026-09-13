@@ -501,14 +501,17 @@ class TenantIsolationManager:
         enforcer: QuotaEnforcer | None = None,
         audit_logger: AuditLogger | None = None,
         actor: str = "system",
-        require_trusted_context: bool = False,
+        require_trusted_context: bool = True,
     ) -> None:
         self.router = router or TenantRouter([])
         self.enforcer = enforcer or QuotaEnforcer()
         self.audit_logger = audit_logger or AuditLogger()
         self.actor = actor
-        # Fail-closed deployment switch: when True, ingest() without a trusted
-        # TenantContext is denied outright (strict authenticated routing).
+        # Fail-closed by default (T-R01/T-R04): ingest() without a trusted
+        # TenantContext is denied outright. Routing from record-controlled
+        # fields is UNTRUSTED COMPATIBILITY MODE — never normal production
+        # multi-tenancy — and requires the explicit opt-out
+        # (require_trusted_context=False).
         self.require_trusted_context = require_trusted_context
 
     def ingest(
@@ -573,7 +576,9 @@ class TenantIsolationManager:
         }
 
         admitted: dict[TenantID, list[dict[str, Any]]] = {}
-        charged: list[tuple[TenantID, QuotaPolicy, int, list[dict[str, Any]]]] = []
+        # (tenant_id, quota, n_records, n_bytes) exactly as charged — the
+        # refund replays these numbers verbatim, never recomputes them.
+        charged: list[tuple[TenantID, QuotaPolicy, int, int]] = []
         try:
             for tid, recs in grouped.items():
                 cfg = self.router.config_for(tid)
@@ -604,7 +609,7 @@ class TenantIsolationManager:
                         },
                     ))
                     raise
-                charged.append((tid, quota, len(recs), recs))
+                charged.append((tid, quota, len(recs), n_bytes_by_tenant[tid]))
                 admitted[tid] = recs
                 self.audit_logger.log(AuditEvent(
                     event_type="ingest",
@@ -620,9 +625,10 @@ class TenantIsolationManager:
                 ))
         except QuotaExceededError:
             # All-or-nothing batch admission: refund tenants already charged
-            # in THIS batch so a failed write never permanently consumes quota.
-            for tid, quota, n_recs, _recs in charged:
-                self.enforcer.refund(tid, quota, n_records=n_recs)
+            # in THIS batch — records AND storage bytes — so a failed write
+            # never permanently consumes quota (no phantom byte usage).
+            for tid, quota, n_recs, n_bytes in charged:
+                self.enforcer.refund(tid, quota, n_records=n_recs, n_bytes=n_bytes)
             raise
 
         return admitted
