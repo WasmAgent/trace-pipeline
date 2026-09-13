@@ -573,6 +573,56 @@ class AuditEvent:
         return cls(**data)
 
 
+@dataclass(frozen=True)
+class PendingAuditEvent:
+    """Immutable, canonically-serialized SUCCESS audit descriptor (§5).
+
+    Reservations hold THESE instead of mutable AuditEvent objects: the audit
+    semantics of a pending event cannot be altered between reserve and
+    commit. ``detail_json`` is canonical (sort_keys, compact separators).
+    Delivery converts back to a regular :class:`AuditEvent`."""
+
+    event_type: str
+    tenant_id: TenantID
+    actor: str
+    resource: str
+    outcome: str
+    detail_json: str
+
+    @classmethod
+    def prepare(
+        cls,
+        *,
+        event_type: str,
+        tenant_id: TenantID,
+        actor: str,
+        resource: str,
+        outcome: str,
+        detail: dict[str, Any],
+    ) -> PendingAuditEvent:
+        detail_json = json.dumps(
+            detail, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+        )
+        return cls(
+            event_type=event_type,
+            tenant_id=tenant_id,
+            actor=actor,
+            resource=resource,
+            outcome=outcome,
+            detail_json=detail_json,
+        )
+
+    def to_audit_event(self) -> AuditEvent:
+        return AuditEvent(
+            event_type=self.event_type,
+            tenant_id=self.tenant_id,
+            actor=self.actor,
+            resource=self.resource,
+            outcome=self.outcome,
+            detail=json.loads(self.detail_json),
+        )
+
+
 def _encode_reserved_payload(records: list[dict[str, Any]]) -> bytes:
     """ONE canonical encoding policy for reserved tenant batches (P1-A): the
     quota is charged on these bytes and these bytes are what the durable store
@@ -584,6 +634,55 @@ def _encode_reserved_payload(records: list[dict[str, Any]]) -> bytes:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("utf-8")
+
+
+def _composition_sha256(
+    *,
+    reservation_id: str,
+    batches: tuple[ReservedTenantBatch, ...],
+    charges: tuple[QuotaCharge, ...],
+    audit_events: tuple[PendingAuditEvent, ...],
+) -> str:
+    """§6: integrity fingerprint over the reservation's canonical composition
+    (id + ordered batch metadata + charge metadata + pending audit canonical
+    JSON). Not a substitute for manager ownership — an additional binding for
+    store idempotency, reconciliation, and debugging."""
+    composition = {
+        "reservation_id": reservation_id,
+        "batches": [
+            {
+                "tenant_id": b.tenant_id,
+                "payload_sha256": b.payload_sha256,
+                "n_records": b.n_records,
+                "n_bytes": b.n_bytes,
+            }
+            for b in batches
+        ],
+        "charges": [
+            {
+                "charge_id": c.charge_id,
+                "tenant_id": c.tenant_id,
+                "n_records": c.n_records,
+                "n_bytes": c.n_bytes,
+                "payload_sha256": c.payload_sha256,
+            }
+            for c in charges
+        ],
+        "audit_events": [
+            {
+                "event_type": e.event_type,
+                "tenant_id": e.tenant_id,
+                "actor": e.actor,
+                "resource": e.resource,
+                "outcome": e.outcome,
+                "detail_json": e.detail_json,
+            }
+            for e in audit_events
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(composition, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -639,13 +738,61 @@ class IngestReservation:
     expires_at_ms: int | None
     batches: tuple[ReservedTenantBatch, ...]
     charges: tuple[QuotaCharge, ...]
-    audit_events: tuple[AuditEvent, ...]
+    audit_events: tuple[PendingAuditEvent, ...]
+    # §6: integrity fingerprint over (reservation_id, ordered batch metadata,
+    # charge metadata, pending audit canonical JSON). Storage idempotency,
+    # reconciliation, and debugging bind to this digest.
+    composition_sha256: str
 
     def batch_for(self, tenant_id: TenantID) -> ReservedTenantBatch | None:
         for batch in self.batches:
             if batch.tenant_id == tenant_id:
                 return batch
         return None
+
+
+@dataclass
+class _ReservationEntry:
+    """Manager-owned authoritative composition of an issued reservation (§3).
+
+    The registry stores the FULL reservation — settlement always uses THIS
+    object, never a caller-supplied reconstruction, so a subset/altered
+    composition cannot commit under a valid reservation_id. The embedded
+    reservation stays frozen; only ``state`` mutates, and only under
+    ``_reservation_lock``."""
+
+    reservation: IngestReservation
+    state: ReservationState
+
+
+class TraceStore:
+    """Durable-store interface for the reservation path (§9).
+
+    ``write_reservation`` publishes ALL tenant batches of a reservation
+    atomically — ALL or NONE (§10 transactional backend, or §11
+    staging + commit manifest for non-transactional backends).
+
+    Idempotency (§12): same reservation_id + same composition_sha256 →
+    success without duplicates; same reservation_id + DIFFERENT
+    composition_sha256 → hard failure."""
+
+    def write_reservation(
+        self,
+        reservation_id: str,
+        batches: tuple[ReservedTenantBatch, ...],
+        *,
+        composition_sha256: str,
+    ) -> None:
+        raise NotImplementedError
+
+    def reservation_status(
+        self,
+        reservation_id: str,
+    ) -> Literal["absent", "staged", "committed"]:
+        """Crash-recovery probe (§14): what does the STORE believe happened
+        to this reservation? Divergence from the manager's own state is
+        detectable and reconcilable."""
+        return "absent"
 
 
 @dataclass(frozen=True)
@@ -765,7 +912,10 @@ class TenantIsolationManager:
         # Reservation settlement registry (§9/§13): reservation_id → state.
         # Lock ordering (§14): reservation_lock -> enforcer._lock, held
         # briefly, with NO audit/durable/network I/O inside either lock.
-        self._reservation_states: dict[str, ReservationState] = {}
+        # §3: reservation_id -> AUTHORITATIVE entry (full reservation +
+        # state). Settlement uses the stored composition, never a
+        # caller-supplied reconstruction.
+        self._reservations: dict[str, _ReservationEntry] = {}
         self._reservation_lock = threading.Lock()
         self._reservation_created_at: dict[str, int] = {}
         self._reservation_expires_at: dict[str, int] = {}
@@ -781,13 +931,13 @@ class TenantIsolationManager:
         now = int(time.time() * 1000)
         with self._reservation_lock:
             out = []
-            for rid, state in self._reservation_states.items():
-                if state is not ReservationState.ACTIVE:
+            for rid, entry in self._reservations.items():
+                if entry.state is not ReservationState.ACTIVE:
                     continue
                 created = self._reservation_created_at.get(rid, 0)
                 out.append({
                     "reservation_id": rid,
-                    "state": state.value,
+                    "state": entry.state.value,
                     "age_seconds": (now - created) / 1000.0,
                     "expires_at_ms": self._reservation_expires_at.get(rid),
                 })
@@ -863,7 +1013,7 @@ class TenantIsolationManager:
         # Exact QuotaCharge objects as charged — rollback replays them
         # verbatim, in reverse order (transaction semantics).
         charged: list[QuotaCharge] = []
-        pending_audit: list[AuditEvent] = []
+        pending_audit: list[PendingAuditEvent] = []
         try:
             for tid, recs in grouped.items():
                 # P1-A: ONE canonical encoding of the tenant batch. The quota
@@ -926,8 +1076,10 @@ class TenantIsolationManager:
                 charged.append(charge)
                 admitted_batches.append(batch)
                 # Success audit is PREPARED, not emitted: it must never claim
-                # success for a batch that later fails or rolls back.
-                pending_audit.append(AuditEvent(
+                # success for a batch that later fails or rolls back. Frozen
+                # PendingAuditEvent (§5) — semantics cannot change between
+                # reserve and commit.
+                pending_audit.append(PendingAuditEvent.prepare(
                     event_type="ingest",
                     tenant_id=tid,
                     actor=self.actor,
@@ -962,53 +1114,97 @@ class TenantIsolationManager:
             batches=tuple(admitted_batches),
             charges=tuple(charged),
             audit_events=tuple(pending_audit),
+            composition_sha256=_composition_sha256(
+                reservation_id=reservation_id,
+                batches=tuple(admitted_batches),
+                charges=tuple(charged),
+                audit_events=tuple(pending_audit),
+            ),
         )
+        # §3: the manager owns the CANONICAL reservation composition. The
+        # stored object is authoritative — settlement always uses it.
         with self._reservation_lock:
-            self._reservation_states[reservation.reservation_id] = ReservationState.ACTIVE
+            self._reservations[reservation.reservation_id] = _ReservationEntry(
+                reservation=reservation,
+                state=ReservationState.ACTIVE,
+            )
             self._reservation_created_at[reservation.reservation_id] = now_ms
             if expires_at_ms is not None:
                 self._reservation_expires_at[reservation.reservation_id] = expires_at_ms
         return reservation
 
-    def commit(self, reservation: IngestReservation) -> IngestResult:
+    def _resolve_settlement_target(
+        self,
+        reservation: IngestReservation | str,
+    ) -> tuple[str, IngestReservation]:
+        """§4: resolve the AUTHORITATIVE reservation for a settlement call.
+
+        Accepts a reservation_id (preferred) or an IngestReservation object
+        (compatibility). The returned composition ALWAYS comes from the
+        manager's registry — a caller-supplied reconstruction with a valid id
+        but altered batches/charges/audit events is detected and rejected
+        (RF01–RF03 are structurally impossible on the id-based path)."""
+        if isinstance(reservation, IngestReservation):
+            rid = reservation.reservation_id
+        else:
+            rid = reservation
+        entry = self._reservations.get(rid)
+        if entry is None:
+            raise RuntimeError(f"unknown reservation {rid}")
+        if isinstance(reservation, IngestReservation) and entry.reservation != reservation:
+            raise RuntimeError(
+                f"reservation {rid} does not match the composition issued by "
+                "this manager (RF01–RF03: subset/altered compositions denied)"
+            )
+        return rid, entry.reservation
+
+    def commit(self, reservation: IngestReservation | str) -> IngestResult:
         """Atomically finalize a reservation after durable storage succeeded
         (§13): state check + quota settlement + state transition happen under
         the reservation lock with no I/O; exactly one terminal transition can
         win, and quota settlement is all-or-nothing (commit_many).
 
+        Settles BY reservation_id — the authoritative composition comes from
+        the manager's registry, never from the caller's hands. Passing the
+        original IngestReservation object is accepted as a compatibility
+        form and verified for exact equality (RF01–RF03).
+
         Success audit delivery is a post-commit obligation: a delivery failure
         is REPORTED in the returned IngestResult (audit_status="failed") and
         never rolls back committed quota or durable data (§15/§16)."""
         with self._reservation_lock:
-            state = self._reservation_states.get(reservation.reservation_id)
-            if state is not ReservationState.ACTIVE:
+            rid, canonical = self._resolve_settlement_target(reservation)
+            entry = self._reservations[rid]
+            if entry.state is not ReservationState.ACTIVE:
                 raise RuntimeError(
-                    f"reservation {reservation.reservation_id} is not active "
-                    f"(state: {state.value if state else 'unknown'})"
+                    f"reservation {rid} is not active "
+                    f"(state: {entry.state.value})"
                 )
-            self.enforcer.commit_many(reservation.charges)
-            self._reservation_states[reservation.reservation_id] = ReservationState.COMMITTED
+            self.enforcer.commit_many(canonical.charges)
+            entry.state = ReservationState.COMMITTED
 
-        return self._deliver_success_audit(reservation)
+        return self._deliver_success_audit(canonical)
 
-    def rollback(self, reservation: IngestReservation) -> None:
+    def rollback(self, reservation: IngestReservation | str) -> None:
         """Atomically undo a reservation whose durable write failed (§13):
         every charge refunded (reverse order) or none; state transitions to
-        ROLLED_BACK. Emits a single ``ingest_aborted`` event — never per-
+        ROLLED_BACK. Settles BY reservation_id against the manager-owned
+        composition. Emits a single ``ingest_aborted`` event — never per-
         tenant success events (P1-B)."""
         with self._reservation_lock:
-            state = self._reservation_states.get(reservation.reservation_id)
-            if state is not ReservationState.ACTIVE:
+            rid, canonical = self._resolve_settlement_target(reservation)
+            entry = self._reservations[rid]
+            if entry.state is not ReservationState.ACTIVE:
                 raise RuntimeError(
-                    f"reservation {reservation.reservation_id} is not active "
-                    f"(state: {state.value if state else 'unknown'})"
+                    f"reservation {rid} is not active "
+                    f"(state: {entry.state.value})"
                 )
-            self.enforcer.refund_many(reservation.charges)
-            self._reservation_states[reservation.reservation_id] = ReservationState.ROLLED_BACK
+            self.enforcer.refund_many(canonical.charges)
+            entry.state = ReservationState.ROLLED_BACK
 
         first_tenant = (
-            reservation.batches[0].tenant_id
-            if reservation.batches
+            canonical.batches[0].tenant_id
+            if canonical.batches
             else "_unknown"
         )
         self.audit_logger.log(AuditEvent(
@@ -1019,7 +1215,7 @@ class TenantIsolationManager:
             outcome="blocked",
             detail={
                 "reason": "durable storage failed; reservation rolled back",
-                "n_tenants": len(reservation.batches),
+                "n_tenants": len(canonical.batches),
             },
         ))
 
@@ -1029,8 +1225,8 @@ class TenantIsolationManager:
         """Post-commit success-audit delivery (§18): delivery failure is
         reported, never rolled back."""
         try:
-            for event in reservation.audit_events:
-                self.audit_logger.log(event)
+            for pending in reservation.audit_events:
+                self.audit_logger.log(pending.to_audit_event())
             return IngestResult(
                 committed=True,
                 batches=reservation.batches,
@@ -1044,35 +1240,57 @@ class TenantIsolationManager:
                 audit_error=repr(exc),
             )
 
+    def reconcile_reservation(
+        self,
+        reservation_id: str,
+        store: TraceStore,
+    ) -> None:
+        """Crash-window reconciliation (§14): align the manager's settlement
+        state with what the STORE believes happened.
+
+        If the store committed → finalize the quota side. If the store has no
+        committed data (absent/staged) → roll the reservation back. This is a
+        recovery tool, not an automatic process — callers invoke it explicitly
+        after detecting divergence.
+
+        Note: quota counters and reservation lifecycle are in-process state; a
+        process restart loses them. Production durability ultimately requires
+        a durable quota/reservation backend (§14)."""
+        status = store.reservation_status(reservation_id)
+        if status == "committed":
+            self.commit(reservation_id)
+        elif status in ("absent", "staged"):
+            self.rollback(reservation_id)
+        else:
+            raise RuntimeError(f"unknown store reservation status: {status!r}")
+
     def ingest_to_store(
         self,
         records: list[dict[str, Any]],
-        store: Any,
+        store: TraceStore,
         tenant_context: TenantContext | None = None,
     ) -> IngestResult:
-        """Load-bearing production path (§6): reserve → durable write of the
-        EXACT reserved payload bytes (hash-verified batches) → atomic commit.
+        """Load-bearing production path (§9): reserve → ATOMIC durable write
+        of the whole reservation (all tenant batches or none, hash-verified,
+        idempotent by reservation_id + composition digest) → atomic commit.
 
-        The storage quota becomes COMMITTED only after ``write_batch`` has
-        succeeded for every tenant batch; a durable-write failure rolls the
-        whole reservation back (quota restored, zero success audits) before
-        the error propagates. Returns an :class:`IngestResult` — a
-        post-commit audit failure is reported through it, not raised, so a
-        caller can never mistake a committed ingest for a retry-safe failure
-        (P1-C)."""
+        The storage quota becomes COMMITTED only after ``write_reservation``
+        has succeeded; a durable-write failure rolls the whole reservation
+        back (quota restored, zero success audits) before the error
+        propagates. Returns an :class:`IngestResult` — a post-commit audit
+        failure is reported through it, not raised, so a caller can never
+        mistake a committed ingest for a retry-safe failure (P1-C)."""
         reservation = self.reserve_ingest(records, tenant_context=tenant_context)
         try:
-            for batch in reservation.batches:
-                store.write_batch(
-                    batch.tenant_id,
-                    batch.payload,
-                    payload_sha256=batch.payload_sha256,
-                    n_records=batch.n_records,
-                )
+            store.write_reservation(
+                reservation.reservation_id,
+                reservation.batches,
+                composition_sha256=reservation.composition_sha256,
+            )
         except Exception:
-            self.rollback(reservation)
+            self.rollback(reservation.reservation_id)
             raise
-        return self.commit(reservation)
+        return self.commit(reservation.reservation_id)
 
     def ingest(
         self,
