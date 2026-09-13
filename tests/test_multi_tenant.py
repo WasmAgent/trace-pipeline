@@ -116,7 +116,10 @@ class TestQuotaEnforcer:
     def test_reset(self):
         enforcer = QuotaEnforcer()
         policy = QuotaPolicy(max_records_per_day=5)
-        enforcer.check_and_record("t1", policy, n_records=5)
+        charge = enforcer.check_and_record("t1", policy, n_records=5)
+        # Lifecycle: settle the charge first — reset() refuses tenants with
+        # live charges so lifecycle state is never silently discarded.
+        enforcer.refund(charge)
         enforcer.reset("t1")
         # After reset, 5 more records should pass again
         enforcer.check_and_record("t1", policy, n_records=5)
