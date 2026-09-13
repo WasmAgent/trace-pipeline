@@ -90,10 +90,26 @@ class AEPValidationResult:
         return self.valid_schema and len(self.errors) == 0
 
 
-def _pae(payload_type: str, payload_b64: str) -> bytes:
-    pt = payload_type.encode()
-    pb = payload_b64.encode()
-    return b"DSSEv1 " + str(len(pt)).encode() + b" " + pt + b" " + str(len(pb)).encode() + b" " + pb
+def _pae(payload_type: str, payload: bytes) -> bytes:
+    """DSSE 1.0.2 §2 PAE over DECODED serialized body bytes (not base64 text)."""
+    pt = payload_type.encode("utf-8")
+    return (
+        b"DSSEv1 "
+        + str(len(pt)).encode("ascii")
+        + b" "
+        + pt
+        + b" "
+        + str(len(payload)).encode("ascii")
+        + b" "
+        + payload
+    )
+
+
+def _decode_dsse_payload(payload_b64: str) -> bytes:
+    try:
+        return base64.b64decode(payload_b64, validate=True)
+    except Exception as exc:
+        raise ValueError("invalid DSSE payload encoding") from exc
 
 
 def verify_aep_authenticity(record: dict[str, Any]) -> AuthenticityResult:
@@ -144,12 +160,17 @@ def verify_aep_authenticity(record: dict[str, Any]) -> AuthenticityResult:
         return AuthenticityResult(False, "invalid", "not-applicable", f"sig decode: {exc}")
 
     try:
-        pubkey.verify(sig_bytes, _pae(payload_type, payload_b64))
+        payload_bytes = _decode_dsse_payload(payload_b64)
+    except Exception as exc:  # noqa: BLE001
+        return AuthenticityResult(False, "invalid", "not-applicable", f"payload decode: {exc}")
+
+    try:
+        pubkey.verify(sig_bytes, _pae(payload_type, payload_bytes))
     except InvalidSignature:
         return AuthenticityResult(False, "invalid", "not-applicable", "PAE signature verification failed")
 
     try:
-        statement = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
+        statement = json.loads(payload_bytes.decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
         return AuthenticityResult(False, "invalid", "not-applicable", f"payload not JSON: {exc}")
     if statement.get("predicateType") != _AEP_PREDICATE_TYPE:

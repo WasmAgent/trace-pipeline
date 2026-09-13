@@ -32,11 +32,21 @@ def _dsse_sign_record(record: dict[str, Any], private_key, key_id: str) -> dict[
         "predicateType": "https://wasmagent.dev/attestations/aep/v0.4",
         "predicate": unsigned,
     }
-    payload_b64 = base64.b64encode(json.dumps(statement).encode()).decode()
+    payload_json = json.dumps(statement, separators=(",", ":"), ensure_ascii=False).encode()
+    payload_b64 = base64.b64encode(payload_json).decode()
     payload_type = "application/vnd.in-toto+json"
-    pt = payload_type.encode()
-    pb = payload_b64.encode()
-    pae = b"DSSEv1 " + str(len(pt)).encode() + b" " + pt + b" " + str(len(pb)).encode() + b" " + pb
+    # PAE covers the DECODED serialized body bytes (DSSE 1.0.2 §2).
+    pt = payload_type.encode("utf-8")
+    pae = (
+        b"DSSEv1 "
+        + str(len(pt)).encode("ascii")
+        + b" "
+        + pt
+        + b" "
+        + str(len(payload_json)).encode("ascii")
+        + b" "
+        + payload_json
+    )
     sig_bytes = private_key.sign(pae)
     signed = dict(record)
     signed["dsse_envelope"] = {
