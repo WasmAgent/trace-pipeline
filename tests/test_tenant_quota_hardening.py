@@ -14,6 +14,7 @@ import json
 import pytest
 
 from evomerge.multi_tenant import (
+    AuditEvent,
     AuditLogger,
     QuotaCharge,
     QuotaEnforcer,
@@ -631,3 +632,246 @@ class TestQuotaChargeLifecycle:
         self._charge(enforcer)
         with pytest.raises(RuntimeError):
             enforcer.reset("t")
+
+
+# ---------------------------------------------------------------------------
+# Transaction boundary (TX01–TX08) + storage quota semantics (SQ01–SQ03)
+# ---------------------------------------------------------------------------
+
+
+class RecordingAuditLogger(AuditLogger):
+    """AuditLogger that records the order in which events were emitted."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.emitted: list[AuditEvent] = []
+
+    def log(self, event: AuditEvent) -> None:
+        super().log(event)
+        self.emitted.append(event)
+
+
+class FailingStore:
+    def write(self, admitted):
+        raise OSError("storage unavailable")
+
+
+class MemoryStore:
+    def __init__(self):
+        self.data = None
+        self.writes = 0
+
+    def write(self, admitted):
+        self.data = admitted
+        self.writes += 1
+
+
+def _tx_manager(audit_logger=None, **kwargs):
+    return _manager(audit_logger=audit_logger or RecordingAuditLogger(), **kwargs)
+
+
+def _two_tenant_tx_manager(audit_logger=None):
+    return _manager(
+        router=TenantRouter([
+            TenantConfig(
+                tenant_id="tenant-a",
+                quota=QuotaPolicy(max_records_per_day=10),
+                subject_id_prefixes=["aaa-"],
+            ),
+            TenantConfig(
+                tenant_id="tenant-b",
+                quota=QuotaPolicy(max_records_per_day=1),
+                subject_id_prefixes=["bbb-"],
+            ),
+        ]),
+        audit_logger=audit_logger or RecordingAuditLogger(),
+        require_trusted_context=False,
+    )
+
+
+class TestTransactionBoundary:
+    def test_tx01_prior_tenant_success_audit_does_not_survive_later_quota_failure(self):
+        logger = RecordingAuditLogger()
+        mgr = _two_tenant_tx_manager(audit_logger=logger)
+        before_active = mgr.enforcer._active_charge_count()
+        before_a = mgr.enforcer.usage("tenant-a")
+
+        with pytest.raises(QuotaExceededError):
+            mgr.ingest([
+                _record(subject_id="aaa-1"),
+                _record(subject_id="bbb-1"),
+                _record(subject_id="bbb-2"),
+            ])
+
+        # A quota restored, B not admitted, active count back to baseline.
+        assert mgr.enforcer.usage("tenant-a") == before_a
+        assert mgr.enforcer._active_charge_count() == before_active
+        # Zero ingest-success audits: the batch rolled back (TX01/P1-B).
+        success = [e for e in logger.emitted if e.event_type == "ingest" and e.outcome == "success"]
+        assert success == []
+
+    def test_tx02_post_charge_injected_failure_rolls_back_reservation(self):
+        # A custom enforcer whose check_and_record raises OSError after the
+        # first tenant has been charged (post-charge pre-commit path).
+        logger = RecordingAuditLogger()
+        mgr = _two_tenant_tx_manager(audit_logger=logger)
+        real = mgr.enforcer.check_and_record
+
+        state = {"charged": 0}
+
+        def flaky(tenant_id, policy, n_records, subject_ids=None, n_bytes=0):
+            if state["charged"] >= 1:
+                raise OSError("disk full")
+            state["charged"] += 1
+            return real(tenant_id, policy, n_records=n_records, subject_ids=subject_ids, n_bytes=n_bytes)
+
+        mgr.enforcer.check_and_record = flaky
+        with pytest.raises(OSError):
+            mgr.ingest([
+                _record(subject_id="aaa-1"),
+                _record(subject_id="bbb-1"),
+            ])
+
+        usage = mgr.enforcer.usage("tenant-a")
+        assert usage["records_today"] == 0
+        assert usage["storage_bytes"] == 0
+        assert usage["n_subjects"] == 0
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_tx03_quota_exceeded_audit_failure_does_not_strand_prior_charges(self):
+        # A passes; B quota fails; the blocked-audit sink ALSO fails.
+        # A's quota must still be restored and the registry must return to
+        # baseline; the surfaced error may be the audit wrapper.
+        class BrokenAudit(AuditLogger):
+            def log(self, event):
+                if event.event_type == "quota_exceeded":
+                    raise OSError("audit sink down")
+                super().log(event)
+
+        audit = BrokenAudit()
+        mgr = _two_tenant_tx_manager(audit_logger=audit)
+        before_a = mgr.enforcer.usage("tenant-a")
+
+        with pytest.raises((QuotaExceededError, RuntimeError)):
+            mgr.ingest([
+                _record(subject_id="aaa-1"),
+                _record(subject_id="bbb-1"),
+                _record(subject_id="bbb-2"),
+            ])
+        assert mgr.enforcer.usage("tenant-a") == before_a
+        assert mgr.enforcer._active_charge_count() == 0
+
+    def test_tx04_durable_write_failure_triggers_rollback(self):
+        logger = RecordingAuditLogger()
+        mgr = _tx_manager(audit_logger=logger)
+        before = mgr.enforcer.usage("tenant-a")
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        with pytest.raises(OSError):
+            mgr.ingest_to_store([_record()], FailingStore(), tenant_context=CTX_A)
+        # The failed ingest_to_store rolled back its own reservation; the
+        # earlier reservation, rolled back manually, also restored quota.
+        mgr.rollback(reservation)
+        assert mgr.enforcer.usage("tenant-a") == before
+        success = [e for e in logger.emitted if e.event_type == "ingest" and e.outcome == "success"]
+        assert success == []
+
+    def test_tx05_durable_write_success_commits_quota(self):
+        logger = RecordingAuditLogger()
+        mgr = _tx_manager(audit_logger=logger)
+        store = MemoryStore()
+        admitted = mgr.ingest_to_store([_record()], store, tenant_context=CTX_A)
+        assert store.writes == 1
+        assert "tenant-a" in admitted
+        usage = mgr.enforcer.usage("tenant-a")
+        assert usage["records_today"] == 1
+        assert mgr.enforcer._active_charge_count() == 0
+        success = [e for e in logger.emitted if e.event_type == "ingest" and e.outcome == "success"]
+        assert len(success) == 1
+
+    def test_tx06_committed_charges_cannot_be_refunded_after_success(self):
+        mgr = _tx_manager()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        store = MemoryStore()
+        store.write(reservation.admitted)
+        mgr.commit(reservation)
+        for charge in reservation.charges:
+            with pytest.raises(RuntimeError):
+                mgr.enforcer.refund(charge)
+        usage = mgr.enforcer.usage("tenant-a")
+        assert usage["records_today"] == 1
+
+    def test_tx07_abandoned_reservation_is_visible_in_registry(self):
+        mgr = _tx_manager()
+        before = mgr.enforcer._active_charge_count()
+        reservation = mgr.reserve_ingest([_record()], tenant_context=CTX_A)
+        assert mgr.enforcer._active_charge_count() == before + 1
+        # No auto-GC: the abandoned reservation stays visible until resolved.
+        assert mgr.enforcer._active_charge_count() > before
+        mgr.rollback(reservation)
+        assert mgr.enforcer._active_charge_count() == before
+
+    def test_tx08_multi_tenant_success_emits_one_audit_per_tenant_after_storage(self):
+        logger = RecordingAuditLogger()
+        mgr = _two_tenant_tx_manager(audit_logger=logger)
+        store = MemoryStore()
+        admitted = mgr.ingest_to_store([
+            _record(subject_id="aaa-1"),
+            _record(subject_id="bbb-1"),
+        ], store, tenant_context=None)
+        assert set(admitted.keys()) == {"tenant-a", "tenant-b"}
+        success = [e for e in logger.emitted if e.event_type == "ingest" and e.outcome == "success"]
+        assert len(success) == 2
+        assert {e.tenant_id for e in success} == {"tenant-a", "tenant-b"}
+
+
+class TestStorageQuotaSemantics:
+    def _mgr_with_limit(self, audit_logger=None):
+        return _manager(
+            router=TenantRouter([
+                TenantConfig(
+                    tenant_id="tenant-a",
+                    quota=QuotaPolicy(max_storage_bytes=5_000),
+                    subject_id_prefixes=["aaa-"],
+                ),
+            ]),
+            audit_logger=audit_logger or RecordingAuditLogger(),
+            require_trusted_context=False,
+        )
+
+    def test_sq01_failed_durable_write_does_not_consume_storage_bytes(self):
+        logger = RecordingAuditLogger()
+        mgr = self._mgr_with_limit(audit_logger=logger)
+        before = mgr.enforcer.usage("tenant-a")
+        with pytest.raises(OSError):
+            mgr.ingest_to_store(
+                [_record(subject_id="aaa-1", blob="x" * 1_000)],
+                FailingStore(),
+                tenant_context=None,
+            )
+        after = mgr.enforcer.usage("tenant-a")
+        assert after["storage_bytes"] == before["storage_bytes"]
+
+    def test_sq02_successful_durable_write_consumes_exactly_encoded_bytes(self):
+        logger = RecordingAuditLogger()
+        mgr = self._mgr_with_limit(audit_logger=logger)
+        recs = [_record(subject_id="aaa-1", blob="x" * 1_000)]
+        store = MemoryStore()
+        mgr.ingest_to_store(recs, store, tenant_context=None)
+        expected = len(json.dumps(recs, ensure_ascii=False, default=str).encode("utf-8"))
+        assert mgr.enforcer.usage("tenant-a")["storage_bytes"] == expected
+
+    def test_sq03_second_write_respects_committed_first_write(self):
+        mgr = self._mgr_with_limit()
+        store = MemoryStore()
+        mgr.ingest_to_store(
+            [_record(subject_id="aaa-1", blob="x" * 2_000)], store, tenant_context=None
+        )
+        committed = mgr.enforcer.usage("tenant-a")["storage_bytes"]
+        assert committed > 0
+        # A second batch that would exceed the limit is denied; the first
+        # committed usage remains intact.
+        with pytest.raises(QuotaExceededError):
+            mgr.ingest_to_store(
+                [_record(subject_id="aaa-2", blob="x" * 4_000)], store, tenant_context=None
+            )
+        assert mgr.enforcer.usage("tenant-a")["storage_bytes"] == committed

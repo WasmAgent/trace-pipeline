@@ -36,6 +36,7 @@ __all__ = [
     "QuotaPolicy",
     "QuotaExceededError",
     "QuotaCharge",
+    "IngestReservation",
     "TenantClaimMismatchError",
     "TenantContext",
     "QuotaEnforcer",
@@ -525,6 +526,29 @@ class AuditEvent:
         return cls(**data)
 
 
+@dataclass(frozen=True)
+class IngestReservation:
+    """Admission state of one `reserve_ingest()` call — NOT yet committed.
+
+    Holds everything a caller needs to finish the ingest transaction:
+      * `admitted` — the per-tenant record sets that passed quota admission
+        (immutable tuples; convert to lists after commit if needed);
+      * `charges` — the exact QuotaCharge objects consumed by admission, to be
+        finalized by :meth:`TenantIsolationManager.commit` or reversed by
+        :meth:`TenantIsolationManager.rollback`;
+      * `audit_events` — PREPARED success events, emitted only by
+        ``commit()`` once durable storage has actually succeeded. A rolled
+        back reservation therefore never leaves a false ingest-success record
+        behind.
+
+    Storage quota becomes COMMITTED only after durable storage has succeeded.
+    """
+
+    admitted: dict[TenantID, tuple[dict[str, Any], ...]]
+    charges: tuple[QuotaCharge, ...]
+    audit_events: tuple[AuditEvent, ...]
+
+
 class AuditLogger:
     """Append-only, thread-safe in-process audit log.
 
@@ -617,24 +641,30 @@ class TenantIsolationManager:
         # (require_trusted_context=False).
         self.require_trusted_context = require_trusted_context
 
-    def ingest(
+    def reserve_ingest(
         self,
         records: list[dict[str, Any]],
         tenant_context: TenantContext | None = None,
-    ) -> dict[TenantID, list[dict[str, Any]]]:
-        """Route, quota-check, and segregate *records* by tenant.
+    ) -> IngestReservation:
+        """Adjudicate admission for *records* WITHOUT finalizing anything.
 
-        Returns a mapping of ``TenantID`` → list of admitted records.
-        Raises ``QuotaExceededError`` if any tenant's quota would be breached.
-        On quota failure, an audit event with ``outcome="blocked"`` is emitted
-        before the exception propagates, and quota already consumed by OTHER
-        tenants in the same batch is refunded (all-or-nothing batch admission).
+        Responsibilities (and nothing more): trusted-context validation, tenant
+        routing, byte accounting, quota charging, admitted-mapping construction,
+        and preparation of the success audit events.
 
-        When ``tenant_context`` is supplied (recommended production posture),
-        the authenticated context is the routing authority: record-level tenant
-        claims are cross-checked and mismatches are denied + audited
-        (``TenantClaimMismatchError``). With ``require_trusted_context=True``
-        (constructor), a missing context denies the batch outright.
+        It must NOT emit success audits, commit quota charges, or perform
+        durable storage writes — those belong to :meth:`commit` after the
+        durable store has succeeded, or to :meth:`rollback` on failure.
+
+        Transaction exception policy (§18):
+          * before the first charge — propagate directly;
+          * after one or more charges — refund every charge in this batch
+            (reverse order) FIRST, then propagate (audit delivery failures in
+            the blocked-audit path never strand quota).
+
+        Storage quota becomes COMMITTED only after durable storage has
+        succeeded — a later durable-write failure rolls the reservation back
+        instead of leaving phantom storage-byte usage behind.
         """
         if self.require_trusted_context and tenant_context is None:
             self.audit_logger.log(AuditEvent(
@@ -678,10 +708,11 @@ class TenantIsolationManager:
             for tid, recs in grouped.items()
         }
 
-        admitted: dict[TenantID, list[dict[str, Any]]] = {}
-        # Exact QuotaCharge objects as committed — rollback replays them
+        admitted: dict[TenantID, tuple[dict[str, Any], ...]] = {}
+        # Exact QuotaCharge objects as charged — rollback replays them
         # verbatim, in reverse order (transaction semantics).
         charged: list[QuotaCharge] = []
+        pending_audit: list[AuditEvent] = []
         try:
             for tid, recs in grouped.items():
                 cfg = self.router.config_for(tid)
@@ -697,24 +728,42 @@ class TenantIsolationManager:
                         n_bytes=n_bytes_by_tenant[tid],
                     )
                 except QuotaExceededError as exc:
-                    self.audit_logger.log(AuditEvent(
-                        event_type="quota_exceeded",
-                        tenant_id=tid,
-                        actor=self.actor,
-                        resource="traces",
-                        outcome="blocked",
-                        detail={
-                            "resource": exc.resource,
-                            "limit": exc.limit,
-                            "current": exc.current,
-                            "n_records_attempted": len(recs),
-                            "n_bytes_attempted": n_bytes_by_tenant[tid],
-                        },
-                    ))
+                    # §7: ROLLBACK FIRST — a quota failure must never leave
+                    # earlier charges stranded just because a non-essential
+                    # audit sink is about to be attempted. Clearing `charged`
+                    # hands ownership to this handler so the outer envelope
+                    # cannot double-refund.
+                    for c in reversed(charged):
+                        self.enforcer.refund(c)
+                    charged.clear()
+                    try:
+                        self.audit_logger.log(AuditEvent(
+                            event_type="quota_exceeded",
+                            tenant_id=tid,
+                            actor=self.actor,
+                            resource="traces",
+                            outcome="blocked",
+                            detail={
+                                "resource": exc.resource,
+                                "limit": exc.limit,
+                                "current": exc.current,
+                                "n_records_attempted": len(recs),
+                                "n_bytes_attempted": n_bytes_by_tenant[tid],
+                            },
+                        ))
+                    except Exception as audit_exc:  # noqa: BLE001
+                        # Audit delivery is observability, not transaction
+                        # state — surface it chained, but the original quota
+                        # failure remains the cause.
+                        raise RuntimeError(
+                            "quota_exceeded audit delivery failed"
+                        ) from audit_exc
                     raise
                 charged.append(charge)
-                admitted[tid] = recs
-                self.audit_logger.log(AuditEvent(
+                admitted[tid] = tuple(recs)
+                # Success audit is PREPARED, not emitted: it must never claim
+                # success for a batch that later fails or rolls back.
+                pending_audit.append(AuditEvent(
                     event_type="ingest",
                     tenant_id=tid,
                     actor=self.actor,
@@ -726,26 +775,97 @@ class TenantIsolationManager:
                         "n_bytes": n_bytes_by_tenant[tid],
                     },
                 ))
-        except QuotaExceededError:
-            # All-or-nothing batch admission: refund every charge made in THIS
-            # batch — records, storage bytes, AND subject references — in
-            # reverse order, so a failed write never permanently consumes
-            # quota (no phantom byte or subject usage).
-            for charge in reversed(charged):
-                self.enforcer.refund(charge)
+        except Exception:
+            # §6: ANY ordinary exception after a charge (audit sink failure,
+            # serialization error, policy callback, internal bug) must strand
+            # no quota state — refund everything charged in THIS batch.
+            for c in reversed(charged):
+                self.enforcer.refund(c)
             raise
 
-        # Transaction boundary (Model A): ingest() IS the quota-protected
-        # operation — once admission auditing has succeeded the charges are
-        # finalized, so the enforcer's active-charge registry stays bounded
-        # and committed charges are no longer refundable. Callers that need
-        # quota to roll back on a LATER durable-write failure should wrap
-        # that write in its own compensating logic; extending a
-        # reserve/commit split here is a reserved API change.
-        for charge in charged:
-            self.enforcer.commit(charge)
+        return IngestReservation(
+            admitted=admitted,
+            charges=tuple(charged),
+            audit_events=tuple(pending_audit),
+        )
 
-        return admitted
+    def commit(self, reservation: IngestReservation) -> None:
+        """Finalize a reservation after durable storage has succeeded.
+
+        Order: quota lifecycle first (charges become COMMITTED and
+        irreversible), then success audit delivery. Audit delivery failure
+        after commit is surfaced to the caller but must NOT roll back
+        already-durable data or committed quota — audit is append-only
+        observability, not part of the storage transaction (§8).
+        """
+        for charge in reservation.charges:
+            self.enforcer.commit(charge)
+        for event in reservation.audit_events:
+            self.audit_logger.log(event)
+
+    def rollback(self, reservation: IngestReservation) -> None:
+        """Undo a reservation whose durable write failed: refund every charge
+        in reverse order. No success audit is emitted; a single
+        ``ingest_aborted`` event is recorded instead (§9)."""
+        for charge in reversed(reservation.charges):
+            self.enforcer.refund(charge)
+        first_tenant = next(iter(reservation.admitted), "_unknown")
+        self.audit_logger.log(AuditEvent(
+            event_type="ingest_aborted",
+            tenant_id=first_tenant,
+            actor=self.actor,
+            resource="traces",
+            outcome="blocked",
+            detail={
+                "reason": "durable storage failed; reservation rolled back",
+                "n_tenants": len(reservation.admitted),
+            },
+        ))
+
+    def ingest_to_store(
+        self,
+        records: list[dict[str, Any]],
+        store: Any,
+        tenant_context: TenantContext | None = None,
+    ) -> dict[TenantID, tuple[dict[str, Any], ...]]:
+        """Load-bearing production path: reserve → durable write → commit.
+
+        The storage quota becomes COMMITTED only after ``store.write`` has
+        succeeded; a durable-write failure rolls the whole reservation back
+        (quota restored, zero success audits) before the error propagates."""
+        reservation = self.reserve_ingest(records, tenant_context=tenant_context)
+        try:
+            store.write(reservation.admitted)
+        except Exception:
+            self.rollback(reservation)
+            raise
+        self.commit(reservation)
+        return reservation.admitted
+
+    def ingest(
+        self,
+        records: list[dict[str, Any]],
+        tenant_context: TenantContext | None = None,
+    ) -> dict[TenantID, list[dict[str, Any]]]:
+        """Admission-only compatibility API.
+
+        .. warning::
+            **UNTRUSTED-FOR-DURABLE-WRITES**: ``ingest()`` commits quota
+            immediately and MUST NOT be used when a later durable storage
+            failure should restore storage quota. Use
+            :meth:`ingest_to_store` / :meth:`reserve_ingest` for production
+            durable writes.
+
+        Returns a mapping of ``TenantID`` → list of admitted records.
+        Raises ``QuotaExceededError`` if any tenant's quota would be breached
+        (with all-or-nothing batch refund semantics preserved).
+        """
+        reservation = self.reserve_ingest(records, tenant_context=tenant_context)
+        self.commit(reservation)
+        return {
+            tid: list(recs)
+            for tid, recs in reservation.admitted.items()
+        }
 
     def query(
         self,
