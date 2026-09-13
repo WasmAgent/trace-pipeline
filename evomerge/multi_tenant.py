@@ -28,6 +28,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 __all__ = [
     "TenantID",
@@ -167,8 +168,14 @@ class QuotaCharge:
     Returned by :meth:`QuotaEnforcer.check_and_record` and replayed verbatim by
     :meth:`QuotaEnforcer.refund` — rollback never recomputes, it reverses
     precisely what was charged (records, storage bytes, and subject
-    references)."""
+    references).
 
+    ``charge_id`` makes the refund ONE-SHOT: the enforcer tracks active
+    charge ids, so refunding the same charge twice (or refunding a fabricated
+    charge) raises instead of silently over-decrementing counters or subject
+    refcounts."""
+
+    charge_id: str
     tenant_id: TenantID
     n_records: int
     n_bytes: int
@@ -192,6 +199,10 @@ class QuotaEnforcer:
         # only ITS references and can never erase a concurrent transaction's
         # committed subject.
         self._subjects: dict[TenantID, dict[str, int]] = {}
+        # Live charge ids: a charge is refundable exactly once; the registry
+        # turns double-refund / forged-charge attempts into loud errors
+        # instead of silent over-decrements.
+        self._active_charges: set[str] = set()
         self._lock = threading.Lock()
 
     def _today_utc(self) -> str:
@@ -250,12 +261,15 @@ class QuotaEnforcer:
             for s in subjects:
                 refs[s] = refs.get(s, 0) + 1
 
-            return QuotaCharge(
+            charge = QuotaCharge(
+                charge_id=uuid4().hex,
                 tenant_id=tenant_id,
                 n_records=n_records,
                 n_bytes=n_bytes,
                 subjects=frozenset(subjects),
             )
+            self._active_charges.add(charge.charge_id)
+            return charge
 
     def usage(self, tenant_id: TenantID) -> dict[str, Any]:
         """Return a snapshot of current usage for *tenant_id*."""
@@ -277,15 +291,25 @@ class QuotaEnforcer:
             self._subjects.pop(tenant_id, None)
 
     def refund(self, charge: QuotaCharge) -> None:
-        """Roll back a prior :meth:`check_and_record` charge exactly.
+        """Roll back a prior :meth:`check_and_record` charge exactly — ONCE.
 
         Used by batch admission: if a later tenant in the same batch breaches
         its quota, tenants already charged in the batch are refunded so a
         failed write never permanently consumes quota. Subject refs are
         DECREMENTED (not discarded): a subject survives if a concurrent
         transaction still holds a reference, so rollback can never erase
-        another transaction's committed state."""
+        another transaction's committed state.
+
+        One-shot: the validation, the rollback, and the terminal state change
+        all happen under the same lock. A second refund of the same charge —
+        or of a charge this enforcer never issued — raises RuntimeError
+        instead of silently over-decrementing."""
         with self._lock:
+            if charge.charge_id not in self._active_charges:
+                raise RuntimeError(
+                    f"quota charge {charge.charge_id} is not active "
+                    "(already refunded or unknown)"
+                )
             today = self._today_utc()
             usage = self._daily.get(charge.tenant_id)
             if usage is not None and usage.date_str == today:
@@ -300,6 +324,8 @@ class QuotaEnforcer:
                     refs.pop(subject, None)
                 else:
                     refs[subject] = current_refs - 1
+            # Terminal state: the charge can never be refunded again.
+            self._active_charges.discard(charge.charge_id)
 
 
 # ---------------------------------------------------------------------------
