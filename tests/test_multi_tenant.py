@@ -294,7 +294,12 @@ class TestTenantIsolationManager:
             TenantConfig("beta", quota=QuotaPolicy(max_records_per_day=5)),
         ]
         router = TenantRouter(configs)
-        return TenantIsolationManager(router=router, actor="test")
+        # This suite exercises the LEGACY routing semantics, so it opts out of
+        # trusted-context enforcement explicitly. UNTRUSTED COMPATIBILITY MODE
+        # — never the production posture (secure default: require_trusted_context=True).
+        return TenantIsolationManager(
+            router=router, actor="test", require_trusted_context=False
+        )
 
     def test_ingest_routes_by_tenant_id(self):
         mgr = self._manager()
