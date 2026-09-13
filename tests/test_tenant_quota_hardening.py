@@ -279,3 +279,110 @@ class TestStorageByteQuotaWiring:
         usage = mgr.enforcer.usage("tenant-a")
         assert usage["storage_bytes"] == expected
         assert usage["storage_bytes"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Subject-quota transactionality (QS01–QS05)
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectQuotaRollback:
+    """Failed multi-tenant batches must not consume subject quota: rollback
+    decrements references instead of discarding subjects, so a poisoned batch
+    can never lock a tenant out of its own future subjects."""
+
+    def _two_tenant_manager(self, max_subjects_a: int = 1):
+        return _manager(
+            router=TenantRouter([
+                TenantConfig(
+                    tenant_id="tenant-a",
+                    quota=QuotaPolicy(max_subjects=max_subjects_a),
+                    subject_id_prefixes=["aaa-"],
+                ),
+                TenantConfig(
+                    tenant_id="tenant-b",
+                    quota=QuotaPolicy(max_records_per_day=1),
+                    subject_id_prefixes=["bbb-"],
+                ),
+            ]),
+            require_trusted_context=False,
+        )
+
+    def test_qs01_failed_batch_does_not_consume_subject_quota(self):
+        mgr = self._two_tenant_manager(max_subjects_a=1)
+        before = mgr.enforcer.usage("tenant-a")
+        batch = [
+            _record(subject_id="aaa-new"),
+            _record(subject_id="bbb-1"),
+            _record(subject_id="bbb-2"),
+        ]
+        with pytest.raises(QuotaExceededError):
+            mgr.ingest(batch)
+        assert mgr.enforcer.usage("tenant-a")["n_subjects"] == before["n_subjects"]
+
+    def test_qs02_nonzero_baseline_restored_exactly(self):
+        mgr = self._two_tenant_manager(max_subjects_a=5)
+        mgr.ingest([_record(subject_id="baseline-subject")])
+        before = mgr.enforcer.usage("tenant-a")
+
+        with pytest.raises(QuotaExceededError):
+            mgr.ingest([
+                _record(subject_id="temporary-subject"),
+                _record(subject_id="bbb-1"),
+                _record(subject_id="bbb-2"),
+            ])
+
+        assert mgr.enforcer.usage("tenant-a") == before
+
+    def test_qs03_concurrent_same_subject_commit_survives_rollback(self):
+        # Transaction 2 commits subject X; transaction 1 (also X) rolls back.
+        # X must survive with refcount 1 — the rollback erases only its own
+        # reference, never a concurrent transaction's committed state.
+        mgr = _manager(
+            router=TenantRouter([TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aa-"])]),
+            require_trusted_context=False,
+        )
+        quota = QuotaPolicy(max_subjects=1)
+
+        # Two charges on the same subject (refcount 2).
+        c1 = mgr.enforcer.check_and_record("tenant-a", quota, n_records=1, subject_ids=["aa-x"])
+        c2 = mgr.enforcer.check_and_record("tenant-a", quota, n_records=1, subject_ids=["aa-x"])
+        assert mgr.enforcer.usage("tenant-a")["n_subjects"] == 1
+
+        # Roll back ONLY the first charge: the second still holds a reference.
+        mgr.enforcer.refund(c1)
+        assert mgr.enforcer.usage("tenant-a")["n_subjects"] == 1
+        # Roll back the second: now the subject is gone.
+        mgr.enforcer.refund(c2)
+        assert mgr.enforcer.usage("tenant-a")["n_subjects"] == 0
+
+    def test_qs04_rollback_does_not_erase_other_subject(self):
+        # Transaction 1: subject X, later rolled back. Transaction 2: subject
+        # Y, committed. End state: X absent, Y present.
+        mgr = _manager(
+            router=TenantRouter([TenantConfig(tenant_id="tenant-a", subject_id_prefixes=["aa-"])]),
+            require_trusted_context=False,
+        )
+        quota = QuotaPolicy(max_subjects=5)
+        c_x = mgr.enforcer.check_and_record("tenant-a", quota, n_records=1, subject_ids=["aa-x"])
+        mgr.enforcer.check_and_record("tenant-a", quota, n_records=1, subject_ids=["aa-y"])
+        mgr.enforcer.refund(c_x)
+        usage = mgr.enforcer.usage("tenant-a")
+        assert usage["n_subjects"] == 1
+
+    def test_qs05_poisoning_loop_leaves_no_growth(self):
+        # 100 failed batches, each introducing a fresh subject: the subject
+        # counter must not grow, and a legitimate later ingest must still be
+        # admitted.
+        mgr = self._two_tenant_manager(max_subjects_a=3)
+        for i in range(100):
+            with pytest.raises(QuotaExceededError):
+                mgr.ingest([
+                    _record(subject_id=f"aaa-poison-{i}"),
+                    _record(subject_id="bbb-1"),
+                    _record(subject_id="bbb-2"),
+                ])
+        assert mgr.enforcer.usage("tenant-a")["n_subjects"] == 0
+
+        admitted = mgr.ingest([_record(subject_id="aaa-real")])
+        assert "tenant-a" in admitted
