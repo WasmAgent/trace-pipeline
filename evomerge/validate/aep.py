@@ -216,6 +216,8 @@ def validate_aep_record(
     # (the exact masking the floor exists to prevent).
     # `_BACKING_ORDER` is the canonical rank (weakest first); the observed
     # list is set-semantics, so ranking must never use array positions.
+    # FAIL CLOSED: a floor without a non-empty observed set is a semantic
+    # error, not a valid pass-through.
     _BACKING_ORDER = [
         "unknown",
         "operator_asserted",
@@ -225,22 +227,28 @@ def validate_aep_record(
     _BACKING_RANK = {grade: i for i, grade in enumerate(_BACKING_ORDER)}
     floor = record.get("run_attribution_backing_floor")
     observed = record.get("run_attribution_backing_observed")
-    if floor is not None and isinstance(observed, list) and observed:
-        known = all(g in _BACKING_RANK for g in observed) and floor in _BACKING_RANK
-        if not known:
+    if floor is not None:
+        if not isinstance(observed, list) or not observed:
             errors.append(
-                "attribution: backing grade outside the canonical vocabulary"
+                "attribution: floor provided without a non-empty observed set — "
+                "the floor cannot be verified against the weakest-grade rule"
             )
-        elif floor not in observed:
-            errors.append(
-                "attribution: run_attribution_backing_floor is not present in "
-                "run_attribution_backing_observed"
-            )
-        elif _BACKING_RANK[floor] != min(_BACKING_RANK[g] for g in observed):
-            errors.append(
-                "attribution: run_attribution_backing_floor is not the weakest "
-                "grade in run_attribution_backing_observed"
-            )
+        else:
+            known = all(g in _BACKING_RANK for g in observed) and floor in _BACKING_RANK
+            if not known:
+                errors.append(
+                    "attribution: backing grade outside the canonical vocabulary"
+                )
+            elif floor not in observed:
+                errors.append(
+                    "attribution: run_attribution_backing_floor is not present in "
+                    "run_attribution_backing_observed"
+                )
+            elif _BACKING_RANK[floor] != min(_BACKING_RANK[g] for g in observed):
+                errors.append(
+                    "attribution: run_attribution_backing_floor is not the weakest "
+                    "grade in run_attribution_backing_observed"
+                )
 
     # Authenticity verification — DSSE-only dispatcher (no legacy fallback).
     authenticity_mode: str | None = None
