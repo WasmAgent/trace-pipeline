@@ -1,15 +1,15 @@
 """Consumer-side corpus gate: trace-pipeline executes the central manifest.
 
 When AEP_PROTOCOL_CORPUS points at the wasmagent-protocol conformance
-checkout, this test enforces the manifest's structural and semantic
-expectations with trace-pipeline's own validator — the shared corpus is a
-live consumer-side gate, not protocol-side data. Without the variable the
-module is skipped (e.g. hermetic local runs).
+checkout, this test enforces the manifest's structural, semantic,
+authenticity, and chain expectations with trace-pipeline's own validators —
+the shared corpus is a live consumer-side gate, not protocol-side data.
+Without the variable the module is skipped (e.g. hermetic local runs).
 
-The authenticity test also executes the manifest's `authenticity` verdicts
-with trace-pipeline's own DSSE verifier and the corpus seed key, making
-trace-pipeline the third native authenticity path alongside the JS and Rust
-verifiers.
+FAIL-CLOSED ACCOUNTING: every manifest target declaring a testable verdict
+must be executed exactly once. A fixture that cannot be exercised (missing
+envelope, unknown key id, missing key file) FAILS the suite — it is never
+silently skipped, so adding an unhandled manifest fixture turns CI red.
 """
 from __future__ import annotations
 
@@ -53,6 +53,26 @@ def _manifest() -> dict:
     return manifest
 
 
+def _key_b64(rel_path: str) -> str:
+    raw = bytes.fromhex((Path(CORPUS) / rel_path).read_text(encoding="utf-8").strip())
+    assert len(raw) == 32, f"{rel_path}: corpus verifying keys must be raw 32-byte Ed25519"
+    return base64.b64encode(raw).decode()
+
+
+def _manifest_key_map() -> dict[str, str]:
+    """Resolve keyid → verifying-key PATH from the manifest itself.
+
+    Honours the manifest's `verifying_keys.by_keyid` map (per-entry
+    `verify_key` overrides are checked at the call site) — no per-consumer
+    hardcoded key table. Values are corpus-relative paths; decoding to base64
+    happens once, at the `_key_b64` call site."""
+    vk = _manifest().get("verifying_keys", {})
+    return {
+        key_id: rel
+        for key_id, rel in (vk.get("by_keyid") or {}).items()
+    }
+
+
 def test_central_corpus_structural_and_semantic() -> None:
     from evomerge.validate.aep import validate_aep_record
 
@@ -60,23 +80,29 @@ def test_central_corpus_structural_and_semantic() -> None:
     entries = manifest.get("conformance_target", [])
     assert entries, "manifest declares no current-target fixtures"
 
-    executed = 0
+    structural_targets = {
+        e["path"] for e in entries if e.get("structural") in ("valid", "invalid")
+    }
+    semantic_targets = {
+        e["path"] for e in entries if e.get("semantic") in ("valid", "invalid")
+    }
+    executed_structural: set[str] = set()
+    executed_semantic: set[str] = set()
+
     for entry in entries:
         fixture = Path(CORPUS) / entry["path"]
+        records = _records(fixture)
+        assert records, f"{entry['path']}: fixture contains no records"
         structural = entry.get("structural")
         semantic = entry.get("semantic")
-        if structural not in ("valid", "invalid") and semantic not in ("valid", "invalid"):
-            continue
 
-        for record in _records(fixture):
+        for record in records:
             result = validate_aep_record(record)
             if structural in ("valid", "invalid"):
-                schema_ok = result.valid_schema
-                assert schema_ok is (structural == "valid"), (
+                assert result.valid_schema is (structural == "valid"), (
                     f"{entry['path']}: structural expected {structural}, "
                     f"errors={result.errors[:3]}"
                 )
-                executed += 1
             # Semantic expectations are only reachable on structurally valid
             # records — the schema enum/minimum reject unknown grades and
             # negative counts before the semantic layer runs.
@@ -84,54 +110,64 @@ def test_central_corpus_structural_and_semantic() -> None:
                 assert result.semantic_valid is (semantic == "valid"), (
                     f"{entry['path']}: semantic expected {semantic}, errors={result.errors[:3]}"
                 )
-                executed += 1
 
-    assert executed >= 20, f"corpus executed too few checks: {executed}"
+        if structural in ("valid", "invalid"):
+            executed_structural.add(entry["path"])
+        if semantic in ("valid", "invalid"):
+            executed_semantic.add(entry["path"])
+
+    # Exact accounting: declared == executed (C-R01 analog for every layer).
+    assert executed_structural == structural_targets, (
+        f"structural targets not fully executed: "
+        f"declared={sorted(structural_targets)} executed={sorted(executed_structural)}"
+    )
+    assert executed_semantic == semantic_targets, (
+        f"semantic targets not fully executed: "
+        f"declared={sorted(semantic_targets)} executed={sorted(executed_semantic)}"
+    )
 
 
 def test_central_corpus_authenticity() -> None:
     """Third native authenticity path: trace-pipeline's DSSE verifier executes
-    the manifest's `authenticity` verdicts against the corpus signing key.
-
-    The corpus ships its signing keys alongside the fixtures:
-    dsse/js-verify-key.hex (key id conformance-seed-key-01, seed c0ffee00 x8)
-    and dsse/rust-fixture-verify-key.hex (key id ci-sample-key, seed deadbeef
-    x8). Each is registered under its envelope keyid via the env-var keystore
-    for the duration of each verification."""
+    the manifest's `authenticity` verdicts. Every declared target executes
+    exactly once — a missing envelope, missing keyid, or unknown verifying key
+    is a hard failure, never a silent skip."""
     from evomerge.validate.aep import verify_aep_authenticity
 
     manifest = _manifest()
     entries = manifest.get("conformance_target", [])
     assert entries, "manifest declares no current-target fixtures"
 
-    def _corpus_key_b64(name: str) -> str:
-        raw = bytes.fromhex((Path(CORPUS) / "dsse" / name).read_text(encoding="utf-8").strip())
-        return base64.b64encode(raw).decode()
+    by_keyid = _manifest_key_map()
+    targets = [e for e in entries if e.get("authenticity") in ("dsse-valid", "invalid")]
+    assert targets, "manifest declares no authenticity targets"
+    executed_paths: set[str] = set()
 
-    key_by_id = {
-        "conformance-seed-key-01": _corpus_key_b64("js-verify-key.hex"),
-        "ci-sample-key": _corpus_key_b64("rust-fixture-verify-key.hex"),
-    }
-    for key_b64 in key_by_id.values():
-        assert len(base64.b64decode(key_b64)) == 32, "corpus verifying keys must be raw 32-byte Ed25519"
-
-    executed = 0
-    for entry in entries:
-        expected = entry.get("authenticity")
-        if expected not in ("dsse-valid", "invalid"):
-            continue
+    for entry in targets:
+        expected = entry["authenticity"]
         fixture = Path(CORPUS) / entry["path"]
-        for record in _records(fixture):
+        records = _records(fixture)
+        assert records, f"{entry['path']}: authenticity fixture contains no records"
+
+        for record in records:
             envelope = record.get("dsse_envelope")
-            if not isinstance(envelope, dict):
-                continue
-            sigs = envelope.get("signatures") or []
-            key_id = (sigs[0] or {}).get("keyid") if sigs else None
-            if not key_id:
-                continue
-            pub_b64 = key_by_id.get(key_id)
-            if pub_b64 is None:
-                continue  # unknown fixture key — not this test's subject
+            assert isinstance(envelope, dict), (
+                f"{entry['path']}: authenticity target lacks a DSSE envelope"
+            )
+            sigs = envelope.get("signatures")
+            assert isinstance(sigs, list) and sigs, (
+                f"{entry['path']}: envelope has no signatures"
+            )
+            key_id = (sigs[0] or {}).get("keyid")
+            assert key_id, f"{entry['path']}: envelope signature carries no keyid"
+
+            key_rel = entry.get("verify_key") or by_keyid.get(key_id)
+            assert key_rel, (
+                f"{entry['path']}: no verifying key for keyid={key_id!r} — "
+                f"add it to manifest verifying_keys.by_keyid or the entry's verify_key"
+            )
+            pub_b64 = _key_b64(key_rel)
+
             env_var = "WASMAGENT_AEP_PUBKEY_" + re.sub(r"[^A-Za-z0-9]", "_", key_id).upper()
             old = os.environ.get(env_var)
             os.environ[env_var] = pub_b64
@@ -146,34 +182,45 @@ def test_central_corpus_authenticity() -> None:
                 f"{entry['path']}: authenticity expected {expected}, "
                 f"got valid={result.valid} mode={result.mode} detail={result.detail}"
             )
-            executed += 1
+        executed_paths.add(entry["path"])
 
-    assert executed >= 8, f"authenticity corpus executed too few checks: {executed}"
+    assert executed_paths == {e["path"] for e in targets}, (
+        f"authenticity targets not fully executed: "
+        f"declared={sorted({e['path'] for e in targets})} "
+        f"executed={sorted(executed_paths)}"
+    )
 
 
 def test_central_corpus_chain() -> None:
     """Chain assurance path: trace-pipeline's verify_aep_chain executes the
     manifest's `chain` verdicts (intact / partial / orphaned / broken /
-    not-present) over every .jsonl fixture, using the same link-hash
-    projection as the JS/Rust verifiers."""
+    not-present) using the same link-hash projection as the JS/Rust
+    verifiers. Every declared chain target executes exactly once."""
     from evomerge.validate.aep import verify_aep_chain
 
     manifest = _manifest()
     entries = manifest.get("conformance_target", [])
 
-    executed = 0
-    for entry in entries:
-        expected = entry.get("chain")
-        if not expected or expected == "not-checked":
-            continue
+    targets = [
+        e for e in entries
+        if e.get("chain") and e.get("chain") != "not-checked"
+    ]
+    assert targets, "manifest declares no chain targets"
+    executed_paths: set[str] = set()
+
+    for entry in targets:
+        expected = entry["chain"]
         fixture = Path(CORPUS) / entry["path"]
-        if fixture.suffix != ".jsonl":
-            continue
         records = _records(fixture)
+        assert records, f"{entry['path']}: chain fixture contains no records"
         result = verify_aep_chain(records)
         assert result.status == expected, (
             f"{entry['path']}: chain expected {expected}, got {result.status}"
         )
-        executed += 1
+        executed_paths.add(entry["path"])
 
-    assert executed >= 5, f"chain corpus executed too few checks: {executed}"
+    assert executed_paths == {e["path"] for e in targets}, (
+        f"chain targets not fully executed: "
+        f"declared={sorted({e['path'] for e in targets})} "
+        f"executed={sorted(executed_paths)}"
+    )

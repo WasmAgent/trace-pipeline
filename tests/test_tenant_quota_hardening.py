@@ -74,9 +74,9 @@ class TestTrustedTenantRouting:
             mgr.ingest([_record()])
 
     def test_t04b_non_strict_mode_without_context_keeps_legacy_routing(self):
-        # Backward compatibility: deployments that have not enabled strict
-        # trusted routing keep the historical (untrusted) resolution order.
-        mgr = _manager()
+        # T-S05: legacy routing survives ONLY with the explicit opt-out
+        # (UNTRUSTED COMPATIBILITY MODE) — never via the default constructor.
+        mgr = _manager(require_trusted_context=False)
         admitted = mgr.ingest([_record(tenant_id="tenant-b")])
         assert "tenant-b" in admitted
 
@@ -107,6 +107,18 @@ class TestTrustedTenantRouting:
         assert denied[0].tenant_id == "tenant-a"
         assert denied[0].actor == "worker-7"
         assert denied[0].detail["claimed_tenant"] == "tenant-b"
+
+    def test_t_r06_denied_batch_consumes_no_quota(self):
+        # T-R06: a denied (mismatched) batch must leave the enforcer's
+        # counters untouched — no record quota, no byte quota.
+        mgr = _manager()
+        mgr.enforcer.check_and_record(
+            "tenant-a", QuotaPolicy(), n_records=3, n_bytes=700
+        )
+        before = mgr.enforcer.usage("tenant-a")
+        with pytest.raises(TenantClaimMismatchError):
+            mgr.ingest([_record(tenant_id="tenant-b")], tenant_context=CTX_A)
+        assert mgr.enforcer.usage("tenant-a") == before
 
     def test_matching_claim_passes(self):
         mgr = _manager()
@@ -157,7 +169,8 @@ class TestStorageByteQuotaWiring:
                     tenant_id="tenant-b",
                     quota=QuotaPolicy(max_records_per_day=1),
                 ),
-            ])
+            ]),
+            require_trusted_context=False,
         )
         recs_a = [_record(tenant_id=None, subject_id="a1")]
         recs_b = [_record(tenant_id=None, subject_id="b1")]
@@ -176,14 +189,62 @@ class TestStorageByteQuotaWiring:
                     quota=QuotaPolicy(max_records_per_day=1),
                     subject_id_prefixes=["bbb-"],
                 ),
-            ])
+            ]),
+            require_trusted_context=False,
         )
         batch = [_record(subject_id="aaa-1"), _record(subject_id="bbb-1"), _record(subject_id="bbb-2")]
         with pytest.raises(QuotaExceededError):
             mgr2.ingest(batch)
-        # tenant-a was charged first; the failed batch must have refunded it.
+        # tenant-a was charged first; the failed batch must have refunded it —
+        # records AND storage bytes (Q-R01, Q-R02).
         usage_a = mgr2.enforcer.usage("tenant-a")
-        assert usage_a["records_today"] == 0, "failed batch must not permanently consume quota"
+        assert usage_a["records_today"] == 0, "failed batch must not permanently consume record quota"
+        assert usage_a["storage_bytes"] == 0, "failed batch must not leave phantom storage-byte usage"
+
+    def test_q04b_rollback_restores_pre_call_usage_not_merely_zero(self):
+        """Q-R03/Q-R06: from a NON-ZERO baseline, a failed multi-tenant batch
+        must restore tenant A's counters to exactly their pre-call values and
+        never drive any counter negative."""
+        mgr = _manager(
+            router=TenantRouter([
+                TenantConfig(
+                    tenant_id="tenant-a",
+                    quota=QuotaPolicy(max_records_per_day=100, max_storage_bytes=1_000_000),
+                    subject_id_prefixes=["aaa-"],
+                ),
+                TenantConfig(
+                    tenant_id="tenant-b",
+                    quota=QuotaPolicy(max_records_per_day=1),
+                    subject_id_prefixes=["bbb-"],
+                ),
+            ]),
+            require_trusted_context=False,
+        )
+        # Non-zero baseline: tenant A already has prior admitted traffic.
+        prior = [_record(subject_id="aaa-prior", blob="z" * 500)]
+        mgr.ingest(prior)
+        before = mgr.enforcer.usage("tenant-a")
+        assert before["records_today"] == 1
+        assert before["storage_bytes"] > 0
+
+        # Batch: tenant A carries a heavy payload; tenant B breaches records/day.
+        batch = [
+            _record(subject_id="aaa-new", blob="q" * 2_000),
+            _record(subject_id="bbb-1"),
+            _record(subject_id="bbb-2"),
+        ]
+        with pytest.raises(QuotaExceededError):
+            mgr.ingest(batch)
+
+        after = mgr.enforcer.usage("tenant-a")
+        assert after["records_today"] == before["records_today"], (
+            "rollback must restore the record quota to the pre-call value"
+        )
+        assert after["storage_bytes"] == before["storage_bytes"], (
+            "rollback must restore the byte quota to the pre-call value — "
+            "no phantom bytes may survive a failed batch"
+        )
+        assert after["records_today"] >= 0 and after["storage_bytes"] >= 0
 
     def test_q05_concurrent_ingest_cannot_oversubscribe_bytes(self):
         import threading
