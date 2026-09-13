@@ -199,10 +199,12 @@ class QuotaEnforcer:
         # only ITS references and can never erase a concurrent transaction's
         # committed subject.
         self._subjects: dict[TenantID, dict[str, int]] = {}
-        # Live charge ids: a charge is refundable exactly once; the registry
-        # turns double-refund / forged-charge attempts into loud errors
-        # instead of silent over-decrements.
-        self._active_charges: set[str] = set()
+        # Live charges (charge_id → the exact charge as issued): a charge is
+        # in exactly one of two terminal states after registration — REFUNDED
+        # (rollback, counters restored) or COMMITTED (finalized). The registry
+        # keeps the FULL charge object so a forged reconstruction with a valid
+        # id but altered tenant/amount fields is detected (set[str] cannot).
+        self._active_charges: dict[str, QuotaCharge] = {}
         self._lock = threading.Lock()
 
     def _today_utc(self) -> str:
@@ -268,8 +270,42 @@ class QuotaEnforcer:
                 n_bytes=n_bytes,
                 subjects=frozenset(subjects),
             )
-            self._active_charges.add(charge.charge_id)
+            self._active_charges[charge.charge_id] = charge
             return charge
+
+    def _active_charge_count(self) -> int:
+        """Diagnostic: number of live (registered, non-terminal) charges.
+
+        Invariant: the active count returns to its baseline after every
+        completed transaction (commit or refund)."""
+        with self._lock:
+            return len(self._active_charges)
+
+    def _require_active_unlocked(self, charge: QuotaCharge) -> None:
+        """Validate that *charge* is live AND byte-identical to the charge
+        this enforcer issued. Callers must hold ``self._lock``."""
+        registered = self._active_charges.get(charge.charge_id)
+        if registered is None:
+            raise RuntimeError(
+                f"quota charge {charge.charge_id} is not active "
+                "(already committed, refunded, or unknown)"
+            )
+        if registered != charge:
+            raise RuntimeError(
+                f"quota charge {charge.charge_id} does not match "
+                "the charge issued by this enforcer"
+            )
+
+    def commit(self, charge: QuotaCharge) -> None:
+        """Finalize a live charge: the quota-protected operation succeeded and
+        is no longer rollback-eligible.
+
+        Deliberately infallible for a known-active charge — it only validates
+        the registry entry and deletes it. No I/O, no callbacks: committing a
+        batch of charges cannot partially fail."""
+        with self._lock:
+            self._require_active_unlocked(charge)
+            del self._active_charges[charge.charge_id]
 
     def usage(self, tenant_id: TenantID) -> dict[str, Any]:
         """Return a snapshot of current usage for *tenant_id*."""
@@ -284,8 +320,20 @@ class QuotaEnforcer:
             }
 
     def reset(self, tenant_id: TenantID) -> None:
-        """Reset all counters for *tenant_id* (useful in tests)."""
+        """Reset all counters for *tenant_id* (test-only helper).
+
+        Refuses to run while live charges exist for the tenant — silently
+        discarding registered charges would strand lifecycle state and allow
+        later refunds to decrement counters that were just zeroed."""
         with self._lock:
+            if any(
+                charge.tenant_id == tenant_id
+                for charge in self._active_charges.values()
+            ):
+                raise RuntimeError(
+                    f"cannot reset tenant {tenant_id!r} while active quota "
+                    "charges exist — refund or commit them first"
+                )
             self._daily.pop(tenant_id, None)
             self._bytes.pop(tenant_id, None)
             self._subjects.pop(tenant_id, None)
@@ -301,15 +349,11 @@ class QuotaEnforcer:
         another transaction's committed state.
 
         One-shot: the validation, the rollback, and the terminal state change
-        all happen under the same lock. A second refund of the same charge —
-        or of a charge this enforcer never issued — raises RuntimeError
-        instead of silently over-decrementing."""
+        all happen under the same lock. A second refund, a committed charge,
+        or a forged reconstruction raises RuntimeError instead of silently
+        over-decrementing."""
         with self._lock:
-            if charge.charge_id not in self._active_charges:
-                raise RuntimeError(
-                    f"quota charge {charge.charge_id} is not active "
-                    "(already refunded or unknown)"
-                )
+            self._require_active_unlocked(charge)
             today = self._today_utc()
             usage = self._daily.get(charge.tenant_id)
             if usage is not None and usage.date_str == today:
@@ -324,8 +368,8 @@ class QuotaEnforcer:
                     refs.pop(subject, None)
                 else:
                     refs[subject] = current_refs - 1
-            # Terminal state: the charge can never be refunded again.
-            self._active_charges.discard(charge.charge_id)
+            # Terminal state: the charge can never be refunded or committed again.
+            del self._active_charges[charge.charge_id]
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +734,16 @@ class TenantIsolationManager:
             for charge in reversed(charged):
                 self.enforcer.refund(charge)
             raise
+
+        # Transaction boundary (Model A): ingest() IS the quota-protected
+        # operation — once admission auditing has succeeded the charges are
+        # finalized, so the enforcer's active-charge registry stays bounded
+        # and committed charges are no longer refundable. Callers that need
+        # quota to roll back on a LATER durable-write failure should wrap
+        # that write in its own compensating logic; extending a
+        # reserve/commit split here is a reserved API change.
+        for charge in charged:
+            self.enforcer.commit(charge)
 
         return admitted
 

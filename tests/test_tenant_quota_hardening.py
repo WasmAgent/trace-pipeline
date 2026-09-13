@@ -489,3 +489,145 @@ class TestOneShotRefund:
         usage = enforcer.usage("t")
         assert usage["records_today"] == 0
         assert usage["n_subjects"] == 0
+
+
+# ---------------------------------------------------------------------------
+# QuotaCharge lifecycle finalization (QC01–QC08)
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaChargeLifecycle:
+    """Every charge has exactly one terminal outcome — REFUNDED or COMMITTED.
+    All invalid transitions (and forged reconstructions) fail closed."""
+
+    def _enforcer(self):
+        return QuotaEnforcer()
+
+    def _charge(self, enforcer, **kwargs):
+        return enforcer.check_and_record(
+            "t", QuotaPolicy(), n_records=1, n_bytes=10, subject_ids=["x"], **kwargs
+        )
+
+    def test_qc01_committed_charge_cannot_later_be_refunded(self):
+        enforcer = self._enforcer()
+        charge = self._charge(enforcer)
+        enforcer.commit(charge)
+        with pytest.raises(RuntimeError):
+            enforcer.refund(charge)
+        # Committed state is preserved: the quota stays charged.
+        usage = enforcer.usage("t")
+        assert usage["records_today"] == 1
+        assert usage["storage_bytes"] == 10
+        assert usage["n_subjects"] == 1
+
+    def test_qc02_successful_transaction_leaves_no_active_charge(self):
+        mgr = _manager()
+        before = mgr.enforcer._active_charge_count()
+        mgr.ingest([_record()], tenant_context=CTX_A)
+        assert mgr.enforcer._active_charge_count() == before
+
+    def test_qc03_repeated_successes_do_not_grow_registry(self):
+        enforcer = self._enforcer()
+        baseline = enforcer._active_charge_count()
+        for i in range(1_000):
+            charge = enforcer.check_and_record(
+                "t", QuotaPolicy(), n_records=1, subject_ids=[f"s-{i}"]
+            )
+            enforcer.commit(charge)
+        assert enforcer._active_charge_count() == baseline
+
+    def test_qc04_committed_charge_cannot_be_committed_twice(self):
+        enforcer = self._enforcer()
+        charge = self._charge(enforcer)
+        enforcer.commit(charge)
+        with pytest.raises(RuntimeError):
+            enforcer.commit(charge)
+
+    def test_qc05_refunded_charge_cannot_be_committed(self):
+        enforcer = self._enforcer()
+        charge = self._charge(enforcer)
+        enforcer.refund(charge)
+        with pytest.raises(RuntimeError):
+            enforcer.commit(charge)
+
+    def test_qc06_unknown_charge_cannot_be_committed(self):
+        enforcer = self._enforcer()
+        before = enforcer.usage("t")
+        forged = QuotaCharge(
+            charge_id="not-issued",
+            tenant_id="t",
+            n_records=1,
+            n_bytes=1,
+            subjects=frozenset({"x"}),
+        )
+        with pytest.raises(RuntimeError):
+            enforcer.commit(forged)
+        assert enforcer.usage("t") == before
+
+    def test_qc07_forged_reconstruction_with_valid_id_is_rejected(self):
+        # This is why the registry is dict[str, QuotaCharge] and not set[str]:
+        # a reconstructed charge with a REAL id but altered tenant/amount
+        # fields must not validate.
+        enforcer = self._enforcer()
+        real = self._charge(enforcer)
+        forged = QuotaCharge(
+            charge_id=real.charge_id,
+            tenant_id="other-tenant",
+            n_records=999,
+            n_bytes=999_999,
+            subjects=frozenset({"evil"}),
+        )
+        with pytest.raises(RuntimeError):
+            enforcer.refund(forged)
+        with pytest.raises(RuntimeError):
+            enforcer.commit(forged)
+        # The real charge is untouched and still live.
+        enforcer.refund(real)
+        assert enforcer.usage("t")["n_subjects"] == 0
+
+    def test_qc08_concurrent_commit_refund_race_exactly_one_winner(self):
+        import threading
+
+        enforcer = self._enforcer()
+        charge = self._charge(enforcer)
+        before = enforcer.usage("t")
+        outcomes = {"commit": 0, "refund": 0, "raised": 0}
+        lock = threading.Lock()
+
+        def committer():
+            try:
+                enforcer.commit(charge)
+                with lock:
+                    outcomes["commit"] += 1
+            except RuntimeError:
+                with lock:
+                    outcomes["raised"] += 1
+
+        def refunder():
+            try:
+                enforcer.refund(charge)
+                with lock:
+                    outcomes["refund"] += 1
+            except RuntimeError:
+                with lock:
+                    outcomes["raised"] += 1
+
+        t1, t2 = threading.Thread(target=committer), threading.Thread(target=refunder)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert outcomes["raised"] == 1
+        assert outcomes["commit"] + outcomes["refund"] == 1
+        after = enforcer.usage("t")
+        if outcomes["commit"] == 1:
+            assert after == before, "commit wins → usage stays charged"
+        else:
+            assert after["records_today"] == 0, "refund wins → usage restored"
+
+    def test_qc09_reset_refuses_tenant_with_live_charges(self):
+        enforcer = self._enforcer()
+        self._charge(enforcer)
+        with pytest.raises(RuntimeError):
+            enforcer.reset("t")
