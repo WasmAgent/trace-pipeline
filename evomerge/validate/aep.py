@@ -105,10 +105,25 @@ def _pae(payload_type: str, payload: bytes) -> bytes:
     )
 
 
+def _decode_base64_either(input_b64: str) -> bytes:
+    """Decode base64 accepting both alphabets, as DSSE 1.0.2 requires ("Either
+    standard or URL-safe base64 encodings are allowed ... verifiers MUST accept
+    either").
+
+    Strategy: normalize the URL-safe alphabet onto the standard one ('-'→'+',
+    '_'→'/'), re-pad, and decode with the strict standard decoder. The mapping
+    is a bijection, so decoding is unique for standard, URL-safe, and mixed
+    inputs alike — matching the Node and Rust decoders byte-for-byte.
+    """
+    normalized = input_b64.replace("-", "+").replace("_", "/")
+    padding = (4 - len(normalized) % 4) % 4
+    return base64.b64decode(normalized + "=" * padding, validate=True)
+
+
 def _decode_dsse_payload(payload_b64: str) -> bytes:
     try:
-        return base64.b64decode(payload_b64, validate=True)
-    except Exception as exc:
+        return _decode_base64_either(payload_b64)
+    except Exception as exc:  # noqa: BLE001
         raise ValueError("invalid DSSE payload encoding") from exc
 
 
@@ -154,8 +169,9 @@ def verify_aep_authenticity(record: dict[str, Any]) -> AuthenticityResult:
         return AuthenticityResult(False, "invalid", "not-applicable", f"key load error: {exc}")
 
     try:
-        padding = (4 - len(sig_b64) % 4) % 4
-        sig_bytes = base64.urlsafe_b64decode(sig_b64 + "=" * padding)
+        # Accept either alphabet, like the payload decoder (normalize URL-safe
+        # onto standard; unique decoding for mixed inputs too).
+        sig_bytes = _decode_base64_either(sig_b64)
     except Exception as exc:  # noqa: BLE001
         return AuthenticityResult(False, "invalid", "not-applicable", f"sig decode: {exc}")
 
@@ -237,8 +253,12 @@ def validate_aep_record(
     # (the exact masking the floor exists to prevent).
     # `_BACKING_ORDER` is the canonical rank (weakest first); the observed
     # list is set-semantics, so ranking must never use array positions.
-    # FAIL CLOSED: a floor without a non-empty observed set is a semantic
-    # error, not a valid pass-through.
+    # FAIL CLOSED, symmetric pair-presence (the canonical descriptions say the
+    # fields ship together — "reported alongside, never instead of"):
+    #   floor present + observed absent/empty  → semantic error
+    #   observed present + floor absent        → semantic error (itemized list
+    #     without a floor permits exactly the masking the floor exists to stop)
+    #   observed present + empty (no floor)    → semantic error (empty claim)
     _BACKING_ORDER = [
         "unknown",
         "operator_asserted",
@@ -248,28 +268,40 @@ def validate_aep_record(
     _BACKING_RANK = {grade: i for i, grade in enumerate(_BACKING_ORDER)}
     floor = record.get("run_attribution_backing_floor")
     observed = record.get("run_attribution_backing_observed")
-    if floor is not None:
-        if not isinstance(observed, list) or not observed:
+    observed_nonempty = isinstance(observed, list) and len(observed) > 0
+    if floor is not None and not observed_nonempty:
+        errors.append(
+            "attribution: floor provided without a non-empty observed set — "
+            "the floor cannot be verified against the weakest-grade rule"
+        )
+    if observed is not None:
+        if not observed_nonempty:
             errors.append(
-                "attribution: floor provided without a non-empty observed set — "
-                "the floor cannot be verified against the weakest-grade rule"
+                "attribution: run_attribution_backing_observed was provided as an "
+                "empty set — an empty grading claim is not a valid record"
             )
-        else:
-            known = all(g in _BACKING_RANK for g in observed) and floor in _BACKING_RANK
-            if not known:
-                errors.append(
-                    "attribution: backing grade outside the canonical vocabulary"
-                )
-            elif floor not in observed:
-                errors.append(
-                    "attribution: run_attribution_backing_floor is not present in "
-                    "run_attribution_backing_observed"
-                )
-            elif _BACKING_RANK[floor] != min(_BACKING_RANK[g] for g in observed):
-                errors.append(
-                    "attribution: run_attribution_backing_floor is not the weakest "
-                    "grade in run_attribution_backing_observed"
-                )
+        elif floor is None:
+            errors.append(
+                "attribution: run_attribution_backing_observed was provided without "
+                "run_attribution_backing_floor — the pair ships together, never "
+                "instead of each other"
+            )
+    if floor is not None and observed_nonempty:
+        known = all(g in _BACKING_RANK for g in observed) and floor in _BACKING_RANK
+        if not known:
+            errors.append(
+                "attribution: backing grade outside the canonical vocabulary"
+            )
+        elif floor not in observed:
+            errors.append(
+                "attribution: run_attribution_backing_floor is not present in "
+                "run_attribution_backing_observed"
+            )
+        elif _BACKING_RANK[floor] != min(_BACKING_RANK[g] for g in observed):
+            errors.append(
+                "attribution: run_attribution_backing_floor is not the weakest "
+                "grade in run_attribution_backing_observed"
+            )
 
     # Authenticity verification — DSSE-only dispatcher (no legacy fallback).
     authenticity_mode: str | None = None

@@ -184,3 +184,127 @@ class TestAEPSignatureVerification:
         # Should not fail due to missing signature
         sig_errors = [e for e in result.errors if "signature" in e]
         assert sig_errors == [], f"Unexpected signature errors: {sig_errors}"
+
+
+class TestDSSEBase64Interop:
+    """DSSE 1.0.2: "Either standard or URL-safe base64 encodings are allowed.
+    Signers may use either, and verifiers MUST accept either."
+
+    The vector uses '>'/'?' runs in the run_id so the standard payload encoding
+    deterministically contains both '+' and '/', and regenerates keys until the
+    signature encoding also contains an alternate-alphabet character — the
+    URL-safe re-encodings then genuinely exercise the alternate alphabet
+    instead of being no-ops.
+    """
+
+    KEY_ID = "test-key-v1"
+    ENV_VAR = "WASMAGENT_AEP_PUBKEY_TEST_KEY_V1"
+
+    @staticmethod
+    def _make_keypair():
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        private_key = Ed25519PrivateKey.generate()
+        pub_raw = (
+            private_key.public_key()
+            .public_bytes(Encoding.Raw, PublicFormat.Raw)
+        )
+        pub_b64 = base64.urlsafe_b64encode(pub_raw).decode()
+        return private_key, pub_b64
+
+    @classmethod
+    def _signed_vector(cls):
+        """(private_key, pub_b64, signed_record) with '+'/'/' in the payload
+        standard base64 encoding and '-'/_' in the URL-safe signature encoding
+        — both alternate alphabets are exercised for real.
+
+        Note: the test signing helper emits URL-safe signatures natively, so
+        the signature vector keeps that encoding and the standard-signature
+        case converts it to the standard alphabet instead.
+        """
+        # '>' (0x3E) and '?' (0x3F) at aligned third-byte positions encode to
+        # '+' and '/' respectively; long runs make the alignment a certainty.
+        run_id = f"run-b64-{'>' * 9}-{'?' * 9}"
+        for _ in range(64):
+            private_key, pub_b64 = cls._make_keypair()
+            record = _dsse_sign_record(_minimal_record(run_id=run_id), private_key, cls.KEY_ID)
+            env = record["dsse_envelope"]
+            payload_ok = "+" in env["payload"] and "/" in env["payload"]
+            sig = env["signatures"][0]["sig"]
+            sig_ok = "-" in sig or "_" in sig
+            if payload_ok and sig_ok:
+                return private_key, pub_b64, record
+        pytest.fail("could not construct a base64 vector with alternate-alphabet characters")
+
+    @staticmethod
+    def _to_urlsafe(s: str) -> str:
+        return s.replace("+", "-").replace("/", "_")
+
+    @staticmethod
+    def _to_standard(s: str) -> str:
+        return s.replace("-", "+").replace("_", "/")
+
+    def test_standard_payload_and_signature_passes(self, monkeypatch):
+        """URL-safe signature converted to the standard alphabet must verify."""
+        from evomerge.validate.aep import validate_aep_record
+        _, pub_b64, record = self._signed_vector()
+        env = record["dsse_envelope"]
+        assert "+" in env["payload"] and "/" in env["payload"], "vector must exercise '+' and '/'"
+        env["signatures"][0]["sig"] = self._to_standard(env["signatures"][0]["sig"])
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert result.passed, f"errors: {result.errors}"
+
+    def test_urlsafe_payload_passes(self, monkeypatch):
+        from evomerge.validate.aep import validate_aep_record
+        _, pub_b64, record = self._signed_vector()
+        env = record["dsse_envelope"]
+        env["payload"] = self._to_urlsafe(env["payload"])
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert result.passed, f"URL-safe payload must be accepted; errors: {result.errors}"
+
+    def test_urlsafe_signature_passes(self, monkeypatch):
+        from evomerge.validate.aep import validate_aep_record
+        _, pub_b64, record = self._signed_vector()
+        env = record["dsse_envelope"]
+        assert "-" in env["signatures"][0]["sig"] or "_" in env["signatures"][0]["sig"], (
+            "vector signature must be URL-safe encoded"
+        )
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert result.passed, f"URL-safe signature must be accepted; errors: {result.errors}"
+
+    def test_urlsafe_payload_and_signature_pass(self, monkeypatch):
+        from evomerge.validate.aep import validate_aep_record
+        _, pub_b64, record = self._signed_vector()
+        env = record["dsse_envelope"]
+        env["payload"] = self._to_urlsafe(env["payload"])
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert result.passed, f"errors: {result.errors}"
+
+    def test_mixed_alphabet_is_accepted_uniquely(self, monkeypatch):
+        """A signature mixing '+' with '-' decodes uniquely under the bijection
+        ('-'→'+', '_'→'/'): it must verify identically to the pure forms."""
+        from evomerge.validate.aep import validate_aep_record
+        _, pub_b64, record = self._signed_vector()
+        env = record["dsse_envelope"]
+        sig = env["signatures"][0]["sig"]
+        if "-" in sig:
+            env["signatures"][0]["sig"] = sig.replace("-", "+", 1)
+        else:
+            env["signatures"][0]["sig"] = sig.replace("_", "/", 1)
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert result.passed, f"mixed alphabet decodes uniquely and must pass; errors: {result.errors}"
+
+    def test_tampered_payload_type_fails(self, monkeypatch):
+        """payloadType is inside the PAE: mutating it must invalidate the sig."""
+        from evomerge.validate.aep import validate_aep_record
+        private_key, pub_b64, record = self._signed_vector()
+        record["dsse_envelope"]["payloadType"] = "application/json"
+        monkeypatch.setenv(self.ENV_VAR, pub_b64)
+        result = validate_aep_record(record, require_signature=True)
+        assert not result.passed
+        assert result.authenticity_mode == "invalid"

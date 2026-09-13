@@ -156,6 +156,46 @@ class TestFloorPermutationInvariance:
         assert any("not present" in e for e in result.errors)
 
 
+class TestAttributionPairPresenceSemantics:
+    """Symmetric pair-presence invariant: `run_attribution_backing_floor` and
+    `run_attribution_backing_observed` ship together — "reported alongside,
+    never instead of". Any half-pair (or empty observed set) is a semantic
+    error, in either direction."""
+
+    def test_observed_without_floor_is_rejected(self) -> None:
+        result = validate_aep_record(
+            _base(run_attribution_backing_observed=["operator_asserted", "qualified_signature"])
+        )
+        assert not result.passed
+        assert any("ships together" in e for e in result.errors)
+
+    def test_empty_observed_without_floor_is_rejected(self) -> None:
+        result = validate_aep_record(_base(run_attribution_backing_observed=[]))
+        assert not result.passed
+        assert any("empty" in e for e in result.errors)
+
+    def test_floor_without_observed_is_rejected(self) -> None:
+        result = validate_aep_record(_base(run_attribution_backing_floor="operator_asserted"))
+        assert not result.passed
+        assert any("non-empty observed" in e for e in result.errors)
+
+    def test_floor_with_empty_observed_is_rejected(self) -> None:
+        result = validate_aep_record(
+            _base(run_attribution_backing_observed=[], run_attribution_backing_floor="unknown")
+        )
+        assert not result.passed
+        assert any("empty" in e or "non-empty observed" in e for e in result.errors)
+
+    def test_complete_pair_still_passes(self) -> None:
+        result = validate_aep_record(
+            _base(
+                run_attribution_backing_observed=["operator_asserted", "qualified_signature"],
+                run_attribution_backing_floor="operator_asserted",
+            )
+        )
+        assert result.passed
+
+
 class TestJsonlRobustness:
     def test_unparseable_lines_are_classified_not_fatal(self, tmp_path: Path) -> None:
         p = tmp_path / "mixed.jsonl"
