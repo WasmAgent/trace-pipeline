@@ -15,6 +15,7 @@ import pytest
 
 from evomerge.multi_tenant import (
     AuditLogger,
+    QuotaCharge,
     QuotaEnforcer,
     QuotaExceededError,
     QuotaPolicy,
@@ -386,3 +387,105 @@ class TestSubjectQuotaRollback:
 
         admitted = mgr.ingest([_record(subject_id="aaa-real")])
         assert "tenant-a" in admitted
+
+
+# ---------------------------------------------------------------------------
+# QuotaCharge one-shot refund safety (QR01–QR05)
+# ---------------------------------------------------------------------------
+
+
+class TestOneShotRefund:
+    """A QuotaCharge is refundable exactly once. Double refunds and forged
+    charges raise RuntimeError instead of silently over-decrementing."""
+
+    def _enforcer(self):
+        return QuotaEnforcer()
+
+    def test_qr01_same_charge_cannot_be_refunded_twice(self):
+        enforcer = self._enforcer()
+        quota = QuotaPolicy()
+        charge = enforcer.check_and_record("t", quota, n_records=2, n_bytes=50, subject_ids=["s1"])
+        enforcer.refund(charge)
+        with pytest.raises(RuntimeError):
+            enforcer.refund(charge)
+        # Second attempt leaves all state unchanged.
+        assert enforcer.usage("t") == {
+            "tenant_id": "t",
+            "records_today": 0,
+            "storage_bytes": 0,
+            "n_subjects": 0,
+        }
+
+    def test_qr02_double_refund_cannot_erase_another_transactions_subject(self):
+        enforcer = self._enforcer()
+        quota = QuotaPolicy(max_subjects=5)
+        a = enforcer.check_and_record("t", quota, n_records=1, subject_ids=["x"])
+        b = enforcer.check_and_record("t", quota, n_records=1, subject_ids=["x"])
+        assert enforcer.usage("t")["n_subjects"] == 1  # refcount 2 on "x"
+
+        enforcer.refund(a)
+        assert enforcer.usage("t")["n_subjects"] == 1
+        with pytest.raises(RuntimeError):
+            enforcer.refund(a)  # double refund — refused
+        # "x" must still be present: B's reference survives.
+        assert enforcer.usage("t")["n_subjects"] == 1
+        enforcer.refund(b)
+        assert enforcer.usage("t")["n_subjects"] == 0
+
+    def test_qr03_forged_charge_rejected_fail_closed(self):
+        enforcer = self._enforcer()
+        quota = QuotaPolicy()
+        enforcer.check_and_record("t", quota, n_records=1, n_bytes=10, subject_ids=["s1"])
+        before = enforcer.usage("t")
+
+        forged = QuotaCharge(
+            charge_id="fabricated-id-not-issued-by-this-enforcer",
+            tenant_id="t",
+            n_records=99,
+            n_bytes=99_999,
+            subjects=frozenset(["s1"]),
+        )
+        with pytest.raises(RuntimeError):
+            enforcer.refund(forged)
+        assert enforcer.usage("t") == before
+
+    def test_qr04_existing_rollback_semantics_remain(self):
+        # charge/rollback round trip still restores records, bytes and subjects.
+        enforcer = self._enforcer()
+        quota = QuotaPolicy()
+        charge = enforcer.check_and_record(
+            "t", quota, n_records=3, n_bytes=120, subject_ids=["s1", "s2"]
+        )
+        assert enforcer.usage("t")["records_today"] == 3
+        enforcer.refund(charge)
+        assert enforcer.usage("t")["records_today"] == 0
+        assert enforcer.usage("t")["storage_bytes"] == 0
+        assert enforcer.usage("t")["n_subjects"] == 0
+
+    def test_qr05_concurrent_refund_exactly_one_succeeds(self):
+        import threading
+
+        enforcer = self._enforcer()
+        quota = QuotaPolicy()
+        charge = enforcer.check_and_record("t", quota, n_records=1, n_bytes=10, subject_ids=["x"])
+        outcomes = {"ok": 0, "raised": 0}
+        lock = threading.Lock()
+
+        def worker():
+            try:
+                enforcer.refund(charge)
+                with lock:
+                    outcomes["ok"] += 1
+            except RuntimeError:
+                with lock:
+                    outcomes["raised"] += 1
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert outcomes == {"ok": 1, "raised": 1}
+        usage = enforcer.usage("t")
+        assert usage["records_today"] == 0
+        assert usage["n_subjects"] == 0
