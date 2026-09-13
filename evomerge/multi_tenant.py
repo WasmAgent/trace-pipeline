@@ -12,14 +12,27 @@ Design
 - ``QuotaPolicy``       — per-tenant resource limits (max records/day, max
   storage bytes, max subjects). ``QuotaEnforcer`` tracks usage and raises
   ``QuotaExceededError`` when a limit would be breached.
-- ``TenantRouter``      — resolves a record to its ``TenantID`` by inspecting
-  ``organization_id``, ``tenant_id``, ``run_context.org``, and
-  subject-ID-prefix matching.
+- ``TenantRouter``      — resolves a record to its ``TenantID``. With a trusted
+  ``TenantContext`` (the default posture), the authenticated transport/session
+  context is the routing authority and record-level tenant fields are only
+  cross-checked claims. Legacy record-field routing survives only as
+  explicit UNTRUSTED COMPATIBILITY MODE.
+- ``QuotaCharge``       — immutable record of one batch's exact quota
+  consumption (records, bytes, subject refs, payload digest); refundable
+  exactly once.
+- ``IngestReservation`` / ``IngestResult`` — the Model B transaction: reserve
+  (route + quota-charge + prepare audits) -> durable store write -> commit or
+  rollback. ``ingest_to_store`` is the load-bearing production path;
+  ``ingest`` is admission-only compatibility mode.
+- ``PendingAuditEvent`` — frozen, canonically-serialized success audit
+  descriptor; emitted only after durable storage succeeds.
 - ``AuditLogger``       — append-only, thread-safe audit log. Each ``AuditEvent``
   records who accessed/wrote what and the outcome.  Exportable as NDJSON for
   compliance consumers.
-- ``TenantIsolationManager`` — top-level facade: route, quota-check, validate,
-  store, and audit — all in one call.
+- ``TenantIsolationManager`` — top-level facade: trusted routing, reservation
+  settlement (``reserve_ingest`` / ``ingest_to_store`` / ``commit`` /
+  ``rollback``), and audit — quota becomes COMMITTED only after durable
+  storage succeeds.
 """
 from __future__ import annotations
 
@@ -427,11 +440,18 @@ class QuotaEnforcer:
 class TenantRouter:
     """Resolves an AEP record to a ``TenantID``.
 
-    Resolution order:
-      1. ``record["tenant_id"]`` (explicit override)
+    Two authority modes (see :meth:`resolve`):
+
+    * **Trusted-context mode** (a ``TenantContext`` is supplied — the default
+      production posture): the authenticated context is the routing
+      authority; record-level tenant fields are cross-checked claims only.
+    * **Legacy mode** (no context): the historical resolution order below
+      applies — UNTRUSTED COMPATIBILITY MODE, not production multi-tenancy:
+      1. ``record["tenant_id"]`` (self-declared claim)
       2. ``record["organization_id"]``
       3. ``record["run_context"]["org"]`` (AEP v0.3 nesting)
-      4. ``subject_id`` prefix matching against registered ``TenantConfig`` objects
+      4. ``subject_id`` prefix matching against registered ``TenantConfig``
+         objects
       5. ``default_tenant`` (fallback)
 
     Args:
