@@ -103,11 +103,17 @@ class TestPartitionAge:
         # 2026-06-01 → 2026-07-28 = 57 days
         assert age == 57.0
 
-    def test_missing_dt_returns_inf(self):
-        assert partition_age_days("traces/subject_id=s1/", "day", now=NOW) == float("inf")
+    def test_missing_dt_returns_none(self):
+        # Unknown age is None, never +inf: inf would flow into retention
+        # comparisons as "maximally old" and trigger destructive actions.
+        assert partition_age_days("traces/subject_id=s1/", "day", now=NOW) is None
 
-    def test_malformed_dt_returns_inf(self):
-        assert partition_age_days("traces/dt=not-a-date/", "day", now=NOW) == float("inf")
+    def test_malformed_dt_returns_none(self):
+        assert partition_age_days("traces/dt=not-a-date/", "day", now=NOW) is None
+
+    def test_impossible_calendar_date_returns_none(self):
+        # 2026-02-30 does not exist — strptime rejects it, age is unknown.
+        assert partition_age_days("traces/dt=2026-02-30/", "day", now=NOW) is None
 
 
 # ---------------------------------------------------------------------------
@@ -203,3 +209,61 @@ class TestArchivalStore:
         assert report.kept == [a for a in report.actions if a.action == "keep"]
         assert report.migrated == []
         assert report.deleted == []
+
+
+class TestUnknownAgeRetentionSafety:
+    """R01–R06: malformed/missing partition timestamps must never become
+    destructive retention actions — unknown age != proof of expiration."""
+
+    POLICY = RetentionPolicy(hot_days=10, delete_after_days=20)
+
+    def _seed_partition_object(self, store, partition: str) -> None:
+        """Drop one object into an arbitrary partition dir (bypassing the
+        record timestamp → partition derivation) so the malformed partition is
+        a real, non-empty directory the planner will visit."""
+        codec = store.hot.codec
+        payload = codec.dumps([_trace("seeded")])
+        ns = store.hot.namespace
+        rel = f"{ns}/{partition}" if ns else partition
+        store.hot.backend.write_bytes(f"{rel}/seed.jsonl", payload)
+
+    def _plan(self, tmp_path, partitions):
+        hot = TraceStorage(LocalBackend(tmp_path / "hot"), granularity="day")
+        cold = TraceStorage(LocalBackend(tmp_path / "cold"), granularity="day")
+        store = ArchivalStore(hot, cold)
+        for pdir in partitions:
+            self._seed_partition_object(store, pdir)
+        return store.plan(self.POLICY, now=NOW)
+
+    def test_r01_r02_missing_and_malformed_dt_are_kept(self, tmp_path):
+        report = self._plan(
+            tmp_path,
+            ["subject_id=s1", "subject_id=s1/dt=not-a-date"],
+        )
+        by_partition = {a.partition: a for a in report.actions}
+        for pdir, action in by_partition.items():
+            if "dt=" not in pdir or "not-a-date" in pdir:
+                assert action.action == "keep", f"{pdir}: {action.action}"
+                assert action.age_days is None
+
+    def test_r03_impossible_calendar_date_is_kept(self, tmp_path):
+        report = self._plan(tmp_path, ["subject_id=s1/dt=2026-02-31"])
+        target = next(a for a in report.actions if "2026-02-31" in a.partition)
+        assert target.action == "keep"
+        assert target.age_days is None
+
+    def test_r04_valid_old_partition_still_migrates_or_deletes(self, tmp_path):
+        hot = TraceStorage(LocalBackend(tmp_path / "hot"), granularity="day")
+        cold = TraceStorage(LocalBackend(tmp_path / "cold"), granularity="day")
+        store = ArchivalStore(hot, cold)
+        hot.write([_trace("old", ts="2026-06-01T00:00:00Z")])
+        report = store.plan(self.POLICY, now=NOW)
+        assert any(a.action in ("migrate", "delete") for a in report.actions), (
+            "valid old partitions must still be migrated/deleted per policy"
+        )
+
+    def test_r05_unknown_age_surfaces_in_report(self, tmp_path):
+        report = self._plan(tmp_path, ["subject_id=s1/dt=oops"])
+        unknown = [a for a in report.actions if a.age_days is None]
+        assert unknown, "unknown-age partitions must appear in the report/audit surface"
+        assert all(a.action == "keep" for a in unknown)

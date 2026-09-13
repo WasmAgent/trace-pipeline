@@ -11,6 +11,7 @@ Design rules
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -206,12 +207,79 @@ def verify_aep_authenticity(record: dict[str, Any]) -> AuthenticityResult:
     unsigned = {k: v for k, v in record.items() if k not in ("signature", "dsse_envelope", "timestamp_proof")}
     subject_digest = (subject.get("digest") or {}).get("sha256")
     canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    if subject_digest != __import__("hashlib").sha256(canonical).hexdigest():
+    if subject_digest != hashlib.sha256(canonical).hexdigest():
         return AuthenticityResult(False, "invalid", "invalid", "subject digest does not bind the record")
     if statement.get("predicate") != unsigned:
         return AuthenticityResult(False, "invalid", "invalid", "predicate does not match the record")
 
     return AuthenticityResult(valid=True, mode="dsse-valid", binding="exact")
+
+
+@dataclass(frozen=True)
+class ChainVerificationResult:
+    """Assurance state of the inter-record hash chain.
+
+    status vocabulary (shared with the JS/Rust verifiers):
+      not-present — no record carries prev_record_hash
+      intact      — every present link verifies; first record has no predecessor
+      partial     — every present link verifies, but at least one link is absent
+      orphaned    — internally consistent, but the first record still claims a
+                    predecessor we do not have (truncated prefix)
+      broken      — at least one present link fails to verify
+    """
+
+    valid: bool
+    status: str
+    broken_at: int | None = None
+
+
+def _chain_link_hash(prev_record: dict[str, Any]) -> str:
+    """SHA-256 hex of the canonical bytes of the previous record's unsigned
+    projection (signature/dsse_envelope stripped; everything else — including
+    prev_record_hash and timestamp_proof — participates, exactly matching the
+    JS/Rust link hash)."""
+    unsigned = {
+        k: v for k, v in prev_record.items() if k not in ("signature", "dsse_envelope")
+    }
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def verify_aep_chain(records: list[dict[str, Any]]) -> ChainVerificationResult:
+    """Verify the inter-record hash chain across an ordered record sequence.
+
+    Same verdict semantics as JS verifyAEPChain / Rust verify_chain:
+    absent links are counted (partial), never treated as broken; a single
+    record claiming a predecessor is orphaned; a mismatching link is broken
+    and reports its 1-based position."""
+    if not records:
+        return ChainVerificationResult(valid=True, status="not-present")
+    if len(records) == 1:
+        first = records[0]
+        return ChainVerificationResult(
+            valid=True,
+            status="orphaned" if first.get("prev_record_hash") is not None else "not-present",
+        )
+
+    linked = 0
+    missing = 0
+    for i in range(1, len(records)):
+        current, prev = records[i], records[i - 1]
+        if current.get("prev_record_hash") is None:
+            missing += 1
+            continue
+        expected = _chain_link_hash(prev)
+        if current["prev_record_hash"] != expected:
+            return ChainVerificationResult(valid=False, status="broken", broken_at=i)
+        linked += 1
+
+    if linked == 0:
+        return ChainVerificationResult(valid=True, status="not-present")
+    if missing > 0:
+        return ChainVerificationResult(valid=True, status="partial")
+    if records[0].get("prev_record_hash") is not None:
+        return ChainVerificationResult(valid=True, status="orphaned")
+    return ChainVerificationResult(valid=True, status="intact")
 
 
 def validate_aep_record(

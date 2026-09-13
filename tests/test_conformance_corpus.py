@@ -35,10 +35,28 @@ def _records(path: Path):
     return [json.loads(path.read_text(encoding="utf-8"))]
 
 
+def _manifest() -> dict:
+    """Load the corpus manifest, refusing a stale signing profile.
+
+    This consumer implements exactly one signing construction — Ed25519 over
+    PAE(payloadType, decoded serialized body bytes). A manifest describing
+    anything else means the corpus and the verifier disagree; that must fail
+    loudly, never silently verify under a retired profile."""
+    manifest = json.loads((Path(CORPUS) / "manifest.json").read_text(encoding="utf8"))
+    supported = "aep-dsse-ed25519-decoded-body-v1"
+    got = manifest.get("signing_profile_id")
+    if got != supported:
+        pytest.fail(
+            f"unsupported or stale signing_profile_id {got!r} — "
+            f"this consumer implements {supported!r}"
+        )
+    return manifest
+
+
 def test_central_corpus_structural_and_semantic() -> None:
     from evomerge.validate.aep import validate_aep_record
 
-    manifest = json.loads((Path(CORPUS) / "manifest.json").read_text(encoding="utf8"))
+    manifest = _manifest()
     entries = manifest.get("conformance_target", [])
     assert entries, "manifest declares no current-target fixtures"
 
@@ -82,7 +100,7 @@ def test_central_corpus_authenticity() -> None:
     for the duration of each verification."""
     from evomerge.validate.aep import verify_aep_authenticity
 
-    manifest = json.loads((Path(CORPUS) / "manifest.json").read_text(encoding="utf8"))
+    manifest = _manifest()
     entries = manifest.get("conformance_target", [])
     assert entries, "manifest declares no current-target fixtures"
 
@@ -131,3 +149,31 @@ def test_central_corpus_authenticity() -> None:
             executed += 1
 
     assert executed >= 8, f"authenticity corpus executed too few checks: {executed}"
+
+
+def test_central_corpus_chain() -> None:
+    """Chain assurance path: trace-pipeline's verify_aep_chain executes the
+    manifest's `chain` verdicts (intact / partial / orphaned / broken /
+    not-present) over every .jsonl fixture, using the same link-hash
+    projection as the JS/Rust verifiers."""
+    from evomerge.validate.aep import verify_aep_chain
+
+    manifest = _manifest()
+    entries = manifest.get("conformance_target", [])
+
+    executed = 0
+    for entry in entries:
+        expected = entry.get("chain")
+        if not expected or expected == "not-checked":
+            continue
+        fixture = Path(CORPUS) / entry["path"]
+        if fixture.suffix != ".jsonl":
+            continue
+        records = _records(fixture)
+        result = verify_aep_chain(records)
+        assert result.status == expected, (
+            f"{entry['path']}: chain expected {expected}, got {result.status}"
+        )
+        executed += 1
+
+    assert executed >= 5, f"chain corpus executed too few checks: {executed}"

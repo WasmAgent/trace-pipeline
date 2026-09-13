@@ -53,11 +53,18 @@ class RetentionPolicy:
             if self.delete_after_days < 0:
                 raise ValueError("delete_after_days must be non-negative")
 
-    def action_for(self, age_days: float) -> tuple[str, str]:
+    def action_for(self, age_days: float | None) -> tuple[str, str]:
         """Return ``(action, reason)`` for a partition of the given age.
 
         ``action`` is ``"delete"``, ``"migrate"``, or ``"keep"``.
+
+        ``age_days=None`` (unknown partition age: missing/malformed ``dt=``
+        bucket) is NEVER eligible for a destructive action — unknown age must
+        not become proof of expiration. The partition is kept and flagged for
+        audit instead.
         """
+        if age_days is None:
+            return "keep", "unknown partition age; destructive retention suppressed (audit dt= bucket)"
         if self.delete_after_days is not None and age_days >= self.delete_after_days:
             return "delete", f"age {age_days:.1f}d >= delete_after_days {self.delete_after_days}d"
         if age_days >= self.hot_days:
@@ -70,9 +77,9 @@ class RetentionAction:
     """A single planned retention action on one partition."""
 
     partition: str
-    action: str        # "migrate" | "delete"
+    action: str        # "migrate" | "delete" | "keep"
     reason: str
-    age_days: float
+    age_days: float | None  # None = unknown age (missing/malformed dt= bucket)
     tier: str = "hot"  # which tier the partition currently lives in
 
 
@@ -98,23 +105,28 @@ class RetentionReport:
         return len(self.actions)
 
 
-def partition_age_days(partition_dir: str, granularity: str, *, now: datetime | None = None) -> float:
+def partition_age_days(partition_dir: str, granularity: str, *, now: datetime | None = None) -> float | None:
     """Age (in days) of a partition derived from its ``dt=`` bucket.
 
     For ``day`` granularity the bucket is ``YYYY-MM-DD``; for ``month`` it is
     ``YYYY-MM`` (aged from the first of the month); for ``hour`` it is
-    ``YYYY-MM-DDTHH``. Returns ``+inf`` if no ``dt=`` segment is present.
+    ``YYYY-MM-DDTHH``.
+
+    Returns ``None`` when the age is UNKNOWN — no ``dt=`` segment, a malformed
+    bucket, or an impossible calendar date. Callers must treat unknown age as
+    non-destructive: it must never flow into a comparison that would turn
+    "unparseable" into "infinitely old, delete it".
     """
     now = now if now is not None else datetime.now(tz=timezone.utc)
     match = _DT_RE.search(partition_dir)
     if not match:
-        return float("inf")
+        return None
     bucket = match.group(1)
     fmt = _GRANULARITY[granularity]
     try:
         part_dt = datetime.strptime(bucket, fmt).replace(tzinfo=timezone.utc)
     except ValueError:
-        return float("inf")
+        return None
     return (now - part_dt).total_seconds() / 86400.0
 
 

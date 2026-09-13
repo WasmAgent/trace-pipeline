@@ -34,6 +34,8 @@ __all__ = [
     "TenantConfig",
     "QuotaPolicy",
     "QuotaExceededError",
+    "TenantClaimMismatchError",
+    "TenantContext",
     "QuotaEnforcer",
     "TenantRouter",
     "AuditEvent",
@@ -114,6 +116,41 @@ class QuotaExceededError(RuntimeError):
             f"Tenant '{tenant_id}' quota exceeded: {resource} "
             f"(limit={limit}, current={current})"
         )
+
+
+class TenantClaimMismatchError(RuntimeError):
+    """A record's self-declared tenant identity disagrees with the trusted
+    (authenticated transport/session) context.
+
+    Invariant: a data-plane claim is not a trusted routing authority. The
+    record is denied before admission and the mismatch is audited."""
+
+    def __init__(self, claimed_tenant: str, trusted_tenant: str) -> None:
+        self.claimed_tenant = claimed_tenant
+        self.trusted_tenant = trusted_tenant
+        super().__init__(
+            f"tenant claim mismatch: record claims {claimed_tenant!r} but the "
+            f"trusted context is {trusted_tenant!r} — record denied"
+        )
+
+
+@dataclass(frozen=True)
+class TenantContext:
+    """Authenticated routing authority for an ingest batch.
+
+    Attributes:
+        tenant_id: The tenant the *authenticated* transport/session belongs to.
+            This — never a field inside the record — determines the namespace.
+        actor_id: Authenticated principal (workload / user id), for audit.
+        source: Where the identity came from — ``"mTLS"``, ``"JWT"``,
+            ``"gateway"``, or ``"trusted-job"``. Ad-hoc values are accepted so
+            deployments can name their own trusted transport, but anything
+            outside this vocabulary deserves scrutiny in audits.
+    """
+
+    tenant_id: TenantID
+    actor_id: str | None = None
+    source: str = "gateway"
 
 
 @dataclass
@@ -208,6 +245,29 @@ class QuotaEnforcer:
             self._bytes.pop(tenant_id, None)
             self._subjects.pop(tenant_id, None)
 
+    def refund(
+        self,
+        tenant_id: TenantID,
+        policy: QuotaPolicy,
+        n_records: int,
+        n_bytes: int = 0,
+    ) -> None:
+        """Roll back a prior :meth:`check_and_record` charge for *tenant_id*.
+
+        Used by batch admission: if a later tenant in the same batch breaches
+        its quota, tenants already charged in the batch are refunded so a
+        failed write never permanently consumes quota. Subject sets are
+        deliberately NOT rolled back — "this subject has been seen" remains
+        true once observed (a conservative, auditable choice)."""
+        with self._lock:
+            today = self._today_utc()
+            usage = self._daily.get(tenant_id)
+            if usage is not None and usage.date_str == today:
+                usage.records = max(0, usage.records - n_records)
+            if n_bytes:
+                current = self._bytes.get(tenant_id, 0)
+                self._bytes[tenant_id] = max(0, current - n_bytes)
+
 
 # ---------------------------------------------------------------------------
 # Tenant router
@@ -236,8 +296,39 @@ class TenantRouter:
         self._configs = {c.tenant_id: c for c in configs}
         self._default = default_tenant
 
-    def resolve(self, record: dict[str, Any]) -> TenantID:
-        """Return the ``TenantID`` for *record*."""
+    def resolve(
+        self,
+        record: dict[str, Any],
+        tenant_context: TenantContext | None = None,
+    ) -> TenantID:
+        """Return the ``TenantID`` for *record*.
+
+        Two authority modes:
+
+        **Trusted-context mode** (``tenant_context`` given — the recommended
+        production posture): the authenticated transport/session context is the
+        ONLY routing authority. Fields inside the data record
+        (``tenant_id`` / ``organization_id`` / ``run_context.org``) are
+        *claims* to cross-check, not selectors: a record claim that disagrees
+        with the trusted context raises :class:`TenantClaimMismatchError`
+        (deny + audit upstream). Subject-prefix matching can never switch the
+        tenant either.
+
+        **Legacy mode** (no trusted context): the historical resolution order
+        applies (record fields → run_context → subject prefix → default).
+        Deployments should treat this as untrusted routing and migrate to
+        trusted-context mode; see ``MultiTenantManager.require_trusted_context``
+        for the fail-closed variant.
+        """
+        if tenant_context is not None:
+            claimed = self.extract_claimed_tenant(record)
+            if claimed is not None and claimed != tenant_context.tenant_id:
+                raise TenantClaimMismatchError(
+                    claimed_tenant=claimed,
+                    trusted_tenant=tenant_context.tenant_id,
+                )
+            return tenant_context.tenant_id
+
         # Explicit fields
         for field_name in ("tenant_id", "organization_id"):
             val = record.get(field_name)
@@ -258,6 +349,20 @@ class TenantRouter:
                 if cfg.allows_subject(str(subject_id)) and cfg.subject_id_prefixes:
                     return cfg.tenant_id
         return self._default
+
+    @staticmethod
+    def extract_claimed_tenant(record: dict[str, Any]) -> str | None:
+        """Return the tenant identity the RECORD itself claims (if any)."""
+        for field_name in ("tenant_id", "organization_id"):
+            val = record.get(field_name)
+            if val and isinstance(val, str):
+                return val
+        ctx = record.get("run_context")
+        if isinstance(ctx, dict):
+            org = ctx.get("org") or ctx.get("organization_id") or ctx.get("tenant_id")
+            if org and isinstance(org, str):
+                return org
+        return None
 
     def config_for(self, tenant_id: TenantID) -> TenantConfig | None:
         return self._configs.get(tenant_id)
@@ -396,66 +501,129 @@ class TenantIsolationManager:
         enforcer: QuotaEnforcer | None = None,
         audit_logger: AuditLogger | None = None,
         actor: str = "system",
+        require_trusted_context: bool = False,
     ) -> None:
         self.router = router or TenantRouter([])
         self.enforcer = enforcer or QuotaEnforcer()
         self.audit_logger = audit_logger or AuditLogger()
         self.actor = actor
+        # Fail-closed deployment switch: when True, ingest() without a trusted
+        # TenantContext is denied outright (strict authenticated routing).
+        self.require_trusted_context = require_trusted_context
 
     def ingest(
         self,
         records: list[dict[str, Any]],
+        tenant_context: TenantContext | None = None,
     ) -> dict[TenantID, list[dict[str, Any]]]:
         """Route, quota-check, and segregate *records* by tenant.
 
         Returns a mapping of ``TenantID`` → list of admitted records.
         Raises ``QuotaExceededError`` if any tenant's quota would be breached.
         On quota failure, an audit event with ``outcome="blocked"`` is emitted
-        before the exception propagates.
+        before the exception propagates, and quota already consumed by OTHER
+        tenants in the same batch is refunded (all-or-nothing batch admission).
+
+        When ``tenant_context`` is supplied (recommended production posture),
+        the authenticated context is the routing authority: record-level tenant
+        claims are cross-checked and mismatches are denied + audited
+        (``TenantClaimMismatchError``). With ``require_trusted_context=True``
+        (constructor), a missing context denies the batch outright.
         """
-        # Group records by tenant
+        if self.require_trusted_context and tenant_context is None:
+            self.audit_logger.log(AuditEvent(
+                event_type="access_denied",
+                tenant_id="_unauthenticated",
+                actor=self.actor,
+                resource="traces",
+                outcome="blocked",
+                detail={"reason": "no trusted tenant context in strict mode"},
+            ))
+            raise TenantClaimMismatchError(claimed_tenant="<none>", trusted_tenant="<required>")
+
+        # Group records by tenant, cross-checking self-declared claims against
+        # the trusted context. A mismatch is an active spoofing signal: the
+        # whole batch is denied (fail closed) and the mismatch is audited.
         grouped: dict[TenantID, list[dict[str, Any]]] = {}
         for rec in records:
-            tid = self.router.resolve(rec)
-            grouped.setdefault(tid, []).append(rec)
-
-        admitted: dict[TenantID, list[dict[str, Any]]] = {}
-        for tid, recs in grouped.items():
-            cfg = self.router.config_for(tid)
-            quota = cfg.quota if cfg else QuotaPolicy()
-            subject_ids = list({
-                str(r.get("subject_id") or
-                    (r.get("run_context") or {}).get("subject_id") or "")
-                for r in recs
-            } - {""})
             try:
-                self.enforcer.check_and_record(
-                    tid, quota, n_records=len(recs), subject_ids=subject_ids
-                )
-            except QuotaExceededError as exc:
+                tid = self.router.resolve(rec, tenant_context=tenant_context)
+            except TenantClaimMismatchError as exc:
                 self.audit_logger.log(AuditEvent(
-                    event_type="quota_exceeded",
-                    tenant_id=tid,
-                    actor=self.actor,
+                    event_type="access_denied",
+                    tenant_id=tenant_context.tenant_id if tenant_context else "_unknown",
+                    actor=tenant_context.actor_id if tenant_context else self.actor,
                     resource="traces",
                     outcome="blocked",
                     detail={
-                        "resource": exc.resource,
-                        "limit": exc.limit,
-                        "current": exc.current,
-                        "n_records_attempted": len(recs),
+                        "reason": "tenant claim mismatch",
+                        "claimed_tenant": exc.claimed_tenant,
+                        "trusted_tenant": exc.trusted_tenant,
                     },
                 ))
                 raise
-            admitted[tid] = recs
-            self.audit_logger.log(AuditEvent(
-                event_type="ingest",
-                tenant_id=tid,
-                actor=self.actor,
-                resource="traces",
-                outcome="success",
-                detail={"n_records": len(recs), "n_subjects": len(subject_ids)},
-            ))
+            grouped.setdefault(tid, []).append(rec)
+
+        # Byte accounting (Q06 semantics): quota is measured over the encoded
+        # JSON payload size, UTF-8, before compression — the wire size the
+        # pipeline actually ingests, not Python object memory size.
+        n_bytes_by_tenant: dict[TenantID, int] = {
+            tid: len(json.dumps(recs, ensure_ascii=False, default=str).encode("utf-8"))
+            for tid, recs in grouped.items()
+        }
+
+        admitted: dict[TenantID, list[dict[str, Any]]] = {}
+        charged: list[tuple[TenantID, QuotaPolicy, int, list[dict[str, Any]]]] = []
+        try:
+            for tid, recs in grouped.items():
+                cfg = self.router.config_for(tid)
+                quota = cfg.quota if cfg else QuotaPolicy()
+                subject_ids = list({
+                    str(r.get("subject_id") or
+                        (r.get("run_context") or {}).get("subject_id") or "")
+                    for r in recs
+                } - {""})
+                try:
+                    self.enforcer.check_and_record(
+                        tid, quota, n_records=len(recs), subject_ids=subject_ids,
+                        n_bytes=n_bytes_by_tenant[tid],
+                    )
+                except QuotaExceededError as exc:
+                    self.audit_logger.log(AuditEvent(
+                        event_type="quota_exceeded",
+                        tenant_id=tid,
+                        actor=self.actor,
+                        resource="traces",
+                        outcome="blocked",
+                        detail={
+                            "resource": exc.resource,
+                            "limit": exc.limit,
+                            "current": exc.current,
+                            "n_records_attempted": len(recs),
+                            "n_bytes_attempted": n_bytes_by_tenant[tid],
+                        },
+                    ))
+                    raise
+                charged.append((tid, quota, len(recs), recs))
+                admitted[tid] = recs
+                self.audit_logger.log(AuditEvent(
+                    event_type="ingest",
+                    tenant_id=tid,
+                    actor=self.actor,
+                    resource="traces",
+                    outcome="success",
+                    detail={
+                        "n_records": len(recs),
+                        "n_subjects": len(subject_ids),
+                        "n_bytes": n_bytes_by_tenant[tid],
+                    },
+                ))
+        except QuotaExceededError:
+            # All-or-nothing batch admission: refund tenants already charged
+            # in THIS batch so a failed write never permanently consumes quota.
+            for tid, quota, n_recs, _recs in charged:
+                self.enforcer.refund(tid, quota, n_records=n_recs)
+            raise
 
         return admitted
 
